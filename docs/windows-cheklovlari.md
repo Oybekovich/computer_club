@@ -208,3 +208,111 @@ ham ketadi. Svet o'chsa, SQLite yozuv o'rtasida uzilib qolishi mumkin.
 
 **Biz nima qilamiz.** `synchronous=FULL` bilan yozuvlar diskka kafolatli tushadi; admin kompyuterga
 **UPS** tavsiya qilinadi; qo'llanmada haftada bir marta zaxirani USB diskka ko'chirish yoziladi.
+
+---
+
+## D. O'rnatishga Windows va antivirus qanday to'sqinlik qiladi
+
+Dasturimiz **imzolanmagan** (code signing sertifikati yo'q — sababi `CLAUDE.md` 15-bo'limda).
+Shuning uchun Windows va antivirus uni "noma'lum" deb biladi. Quyida har bir to'siq,
+ehtimoli bo'yicha tartiblangan.
+
+### D1. Firewall so'rovi — **aniq bo'ladi**
+
+**Nima bo'ladi.** AdminApp birinchi marta ishga tushganda Windows Defender Firewall
+"Bu dasturga tarmoqdan foydalanishga ruxsat berasizmi?" deb so'raydi. Javob berish uchun
+administrator huquqi kerak. Ruxsat berilmasa, client kompyuterlar serverni topa olmaydi.
+
+**Biz nima qilamiz.** `install-admin.ps1` qoidani oldindan qo'shadi
+(`New-NetFirewallRule`, faqat `LocalSubnet` uchun). Shunda so'rov umuman chiqmaydi.
+
+### D2. SmartScreen — "Windows protected your PC"
+
+**Nima bo'ladi.** Imzosiz exe ishga tushirilganda ko'k ekran chiqadi va dastur bloklanadi;
+davom etish uchun "More info → Run anyway" bosish kerak.
+
+**Muhim nuqta:** SmartScreen asosan faylning **"internetdan keldi" belgisiga** (Mark of the Web)
+qarab ishlaydi. Ya'ni brauzer, Telegram yoki email orqali kelgan fayl belgilanadi.
+
+**Biz nima qilamiz.** Dastur fayllarini **USB disk bilan** olib boramiz, internetdan yuklab
+olmaymiz. *Bu xatti-harakat joyida tekshiriladi* — agar baribir ogohlantirsa, zahira yo'l:
+PowerShell'da `Unblock-File -Path "C:\...\AdminApp.exe"`.
+
+### D3. Defender heuristikasi single-file exe'ni noto'g'ri belgilashi
+
+**Nima bo'ladi.** Single-file exe o'z ichida butun .NET runtime'ni olib yuradi va ishga
+tushganda uni ochadi. Ba'zi antiviruslar bu naqshni "o'zini ochadigan zararli dastur" deb
+o'ylab, faylni karantinga oladi — dastur shunchaki "yo'qoladi".
+
+**Biz nima qilamiz.** O'rnatish skripti papkani Defender istisnosiga qo'shadi.
+Agar baribir muammo bo'lsa, zahira yo'l: `PublishSingleFile` ni o'chirib, papka + DLL'lar
+ko'rinishida tarqatish (kamroq shubha tug'diradi, kodga o'zgartirish kerak emas).
+
+### D4. Smart App Control — eng xatarli, lekin ehtimoli past
+
+**Nima bo'ladi.** Windows 11'ning **toza o'rnatilgan** nusxalarida yoqilgan bo'lishi mumkin.
+Yoqilgan bo'lsa:
+
+- imzosiz dasturni **umuman** ishga tushirmaydi;
+- bitta dastur uchun istisno qo'yish yo'li **yo'q**;
+- va uni o'chirsangiz, **qaytarib yoqib bo'lmaydi** — faqat Windows'ni qayta o'rnatish orqali.
+
+**Biz nima qilamiz.** O'rnatishdan **oldin** tekshiramiz (D8 ro'yxati). Yoqilgan bo'lsa,
+`install-admin.ps1` to'xtaydi va tanlovni egasiga qoldiradi: o'chirish (bir tomonlama) yoki
+dasturni imzolash. Yangilangan (toza o'rnatilmagan) Windows'larda bu funksiya odatda yo'q
+yoki o'chirilgan.
+
+### D5. Uchinchi tomon antivirus (Kaspersky, Avast, 360 va boshqalar)
+
+**Nima bo'ladi.** Ular Defender'dan qattiqroq ishlaydi va o'z istisno tizimi boshqacha.
+
+**Biz nima qilamiz.** Klub kompyuterlarida qaysi antivirus borligini oldindan bilib olamiz
+(17-bo'limdagi ochiq savol) va istisnolarni o'sha dastur bo'yicha qo'yamiz. Joyida sinab
+ko'rish majburiy.
+
+### D6. Controlled Folder Access — bizga tegmaydi
+
+**Nima bo'ladi.** Defender'ning bu funksiyasi "noma'lum" dasturlarga Hujjatlar, Desktop va
+Rasmlar papkalariga yozishni taqiqlaydi.
+
+**Biz nima qilamiz.** Hech narsa: biz faqat `C:\ProgramData\Kompyuterxona\` ga yozamiz, u
+himoyalangan papkalar ro'yxatida yo'q. Baza, loglar va zaxiralarni hech qachon Hujjatlar yoki
+Desktop ichiga joylashtirma.
+
+### D7. UAC (administrator huquqi) — ishlash paytida kerak emas
+
+**Nima bo'ladi.** Administrator huquqi talab qiladigan dastur har safar UAC oynasini
+chiqaradi va avtostart qilish qiyinlashadi.
+
+**Biz nima qilamiz.** AdminApp administrator huquqini **talab qilmaydi**: Kestrel oddiy
+socket bilan ishlaydi (http.sys emas, shuning uchun `netsh urlacl` kerak emas), ma'lumotlar
+esa huquq berilgan `ProgramData` papkasida. Faqat o'rnatish skriptlari administrator
+sifatida ishlaydi. **Exe manifestiga `requireAdministrator` yozma.**
+
+### D8. O'rnatishdan oldin tekshiriladigan ro'yxat
+
+Har bir kompyuterda (admin va client) o'rnatishdan **oldin**:
+
+| # | Nimani tekshirish | Qanday | Kutilgan |
+|---|---|---|---|
+| 1 | Smart App Control | Sozlamalar → Maxfiylik va xavfsizlik → Windows Security → App & browser control | Yo'q yoki "O'chirilgan" |
+| 2 | Qaysi antivirus o'rnatilgan | Windows Security → Virus & threat protection → "Manage providers" | Defender (bo'lmasa — qaysi biri?) |
+| 3 | WebView2 Runtime (faqat admin kompyuter) | `Program Files (x86)\Microsoft\EdgeWebView` papkasi bormi | Bor |
+| 4 | 5000-port bo'shmi (faqat admin kompyuter) | `netstat -ano \| findstr :5000` va `netsh interface ipv4 show excludedportrange protocol=tcp` | Bo'sh, rezerv oraliqda emas |
+| 5 | Windows versiyasi va nashri | `winver` | Windows 11 afzal |
+
+Bu ro'yxat 10-bosqichda `install-admin.ps1` ning birinchi qadamiga skript sifatida kiritiladi.
+
+### D9. Asosiy xavf admin'da emas, **client'da**
+
+Yodda tut: AdminApp antivirus uchun oddiy dastur — u shunchaki oyna ochadi va tarmoqni
+tinglaydi. **Client dasturi esa aynan zararli dasturlar qiladigan ishlarni qiladi:**
+
+- Windows shell'ini almashtiradi (Registry'ga yozish);
+- boshqa jarayonlarni majburan yopadi (`Kill`);
+- Job Object bilan jarayonlar guruhini boshqaradi;
+- klaviatura kombinatsiyalarini ushlaydi;
+- avtomatik login va foydalanuvchi siyosatlari bilan ishlaydi.
+
+Shuning uchun `install-client.ps1` da Defender istisnosi **majburiy qadam**, va 8-bosqichda
+antivirus bilan bog'liq muammolarni alohida sinab ko'ramiz.

@@ -128,6 +128,18 @@
 - **WebView2 ma'lumot papkasi majburan belgilanadi:** `C:\ProgramData\Kompyuterxona\WebView2`. Standart holatda WebView2 exe **yonida** papka yaratmoqchi bo'ladi, `Program Files` ichida esa yozishga ruxsat yo'q va dastur ochilmaydi. Papka `CoreWebView2Environment.CreateAsync(userDataFolder: ...)` orqali beriladi.
 - `PasswordHasher<T>` uchun `Microsoft.Extensions.Identity.Core` paketi qo'shiladi (butun Identity tizimi emas, faqat xeshlash qismi).
 
+### Nega exe, PWA yoki veb-ilova emas (qat'iy qaror)
+
+Admin panel HTML'da yozilgani uchun bu veb-ilovaga o'xshab ko'rinadi, lekin **u emas.** Qaror shunday:
+
+- `AdminApp.exe` — **oddiy Windows dasturi.** Ikki marta bosiladi, o'z oynasi bor, tray belgisi bor, Windows bilan birga ishga tushadi. Brauzer ochish, saytga kirish yoki "ilovani o'rnatish" kerak emas.
+- **WebView2 — brauzer emas, dastur ichiga joylashtirilgan dvigatel.** U oyna ichidagi tasvirni chizadi. Shu usul keng tarqalgan (VS Code, Discord va boshqalar shunday ishlaydi), faqat biz Chromium'ni o'zimiz bilan tashimaymiz — Windows'da turgan Edge dvigatelidan foydalanamiz, shuning uchun dastur yengil bo'ladi.
+- **Server exe'ning ichida.** Tashqi web-server o'rnatilmaydi, internet hech qachon kerak emas.
+- **Telefondan kirish — ikkinchi darajali yo'l.** Telefon brauzeri exe ishlab turgan serverga murojaat qiladi. AdminApp o'chsa, telefon ham ochmaydi. Bu qulaylik, asosiy ish usuli emas.
+- HTML tanlanishining sababi: egasi (loyiha muallifi) panelni o'zi tahrirlay oladi, va telefon uchun ikkinchi interfeys yozish kerak emas.
+
+**Bu qarorni o'zgartirma.** PWA, Electron, tashqi brauzerda ochiladigan panel yoki alohida o'rnatiladigan web-server — hammasi rad etilgan.
+
 ---
 
 ## 5. Papka tuzilishi
@@ -659,6 +671,25 @@ dotnet publish src/Kompyuterxona.Client -c Release -r win-x64 --self-contained t
 - Exe imzolanmagan bo'ladi, ustiga-ustak u shell almashtiradi va jarayonlarni yopadi — shuning uchun SmartScreen va ba'zi antiviruslar ogohlantirishi mumkin. O'rnatishdan keyin Defender'ga papkani istisno qilib qo'yish kerak bo'lishi mumkin; qo'llanmada yoziladi.
 - Yakuniy (mijozga beriladigan) `publish` Windows kompyuterda bajariladi.
 
+### Antivirus, SmartScreen va tarqatish
+
+Exe imzolanmagan bo'lgani uchun Windows va antivirus to'siq qo'yishi mumkin. Qabul qilingan qarorlar:
+
+- **Tarqatish USB disk bilan.** SmartScreen asosan faylning "internetdan keldi" belgisiga (Mark of the Web) qarab ogohlantiradi; mahalliy o'rnatuvchi orqali kelgan faylga bu belgi odatda tushmaydi. *Buni joyida tekshiramiz* — agar baribir ogohlantirsa, zahira yo'l: PowerShell'da `Unblock-File` yoki oynada "More info → Run anyway".
+- **Fayllarni internetdan (brauzer, Telegram, email) yuklab olib o'rnatmaslik kerak** — aynan shunda SmartScreen ogohlantiradi.
+- **Defender istisnosi o'rnatish skriptining bir qismi.** Single-file exe ichida runtime'ni olib yuradi va ishga tushganda uni ochadi; ba'zi antiviruslar bu naqshni noto'g'ri "trojan" deb belgilashi mumkin.
+- **Zahira yo'l:** agar antivirus single-file exe'ni tinch qo'ymasa, `PublishSingleFile` ni o'chirib, papka + DLL'lar ko'rinishida tarqatamiz. Bu kamroq shubha tug'diradi va kodga hech qanday o'zgartirish talab qilmaydi.
+- **Imzolash (code signing) v1'da qilinmaydi.** Variantlar va nega shunday tanlangani:
+
+| Yo'l | Narxi | Beradi | Bermaydi |
+|---|---|---|---|
+| **Imzolamaslik** (tanlangan) | 0 | — | — |
+| O'zini-o'zi imzolash + sertifikatni klub kompyuterlariga o'rnatish | 0 (skript qiladi) | "Noma'lum nashriyotchi" o'rniga nom; ba'zi antiviruslar yumshaydi | SmartScreen va Smart App Control'ga ta'sir qilmaydi |
+| Haqiqiy sertifikat | yiliga ~200–400 $ + apparat token | Ogohlantirishlarni yo'qotadi | — |
+
+  Sabab: tizim yopiq LAN'da, cheklangan sondagi kompyuterga bir marta o'rnatiladi, fayl USB bilan boriladi va istisnolarni skript qo'yadi. Dastur keyinchalik ko'p joyga sotilsa, haqiqiy sertifikat ma'noga ega bo'ladi — kodga o'zgartirish kerak emas.
+- Batafsil: `docs/windows-cheklovlari.md`, D bo'limi.
+
 ---
 
 ## 16. Deploy (o'rnatish) — keyingi bosqich
@@ -675,22 +706,25 @@ Bu skriptlar 10-bosqichda yoziladi. Hozir faqat yodda tut.
 6. Tarmoq kartasida Wake-on-LAN ruxsatini yoqishga urinish (natijani ko'rsatish). BIOS'dagi WOL qo'lda yoqiladi.
 7. **Fast Startup'ni o'chirish** (WOL ishlashi uchun), uyquni o'chirish, Windows Update "faol soatlar"ini klub ish vaqtiga sozlash.
 8. `C:\ProgramData\Kompyuterxona\Client\` papkasiga `Mijoz` uchun yozish huquqini berish.
-9. Qo'riqchi uchun Task Scheduler vazifasini yaratish (10.3).
-10. Brauzer uchun cheklov siyosatlarini Registry'ga yozish va launcherlarning avtostartini o'chirish (10.2, 10.3).
-11. Rollback skriptini ham o'rnatish.
-12. Client uchun kiruvchi Firewall port **shart emas** (ulanishni client o'zi boshlaydi).
+9. **Defender istisnosi — majburiy qadam.** Client shell'ni almashtiradi, Registry'ga yozadi, jarayonlarni majburan yopadi va Job Object ishlatadi. Bu xatti-harakatlar antivirus uchun eng shubhali naqsh, shuning uchun istisnosiz client dasturi karantinga tushib qolishi mumkin.
+10. Qo'riqchi uchun Task Scheduler vazifasini yaratish (10.3).
+11. Brauzer uchun cheklov siyosatlarini Registry'ga yozish va launcherlarning avtostartini o'chirish (10.2, 10.3).
+12. Rollback skriptini ham o'rnatish.
+13. Client uchun kiruvchi Firewall port **shart emas** (ulanishni client o'zi boshlaydi).
 
 **`install-admin.ps1`:**
 
-1. Fayllarni nusxalash.
-2. Firewall: 5000-port, faqat `LocalSubnet` uchun.
-3. Statik IP.
-4. Sleep va Hibernate'ni o'chirish.
-5. Avtostart.
-6. WebView2 Runtime borligini tekshirish, yo'q bo'lsa offline o'rnatish.
-7. `C:\ProgramData\Kompyuterxona\` papkasiga yozish huquqini berish (baza, loglar, zaxiralar).
-8. 5000-port bo'shligini tekshirish (`netstat -ano | findstr :5000` va `netsh interface ipv4 show excludedportrange protocol=tcp`), band bo'lsa boshqa port taklif qilish.
-9. Tavsiya: admin kompyuterga **UPS** (zahira quvvat manbai) — svet o'chganda baza shikastlanmasligi uchun. Zaxira nusxalarni haftada bir USB diskka ko'chirish ham qo'llanmaga yoziladi.
+1. **Muhitni tekshirish (birinchi qadam, hech narsa o'zgartirmasdan):** Smart App Control holati, o'rnatilgan antivirus, WebView2 Runtime bor-yo'qligi, 5000-port bo'shligi. Natija ekranga chiqariladi; Smart App Control yoqilgan bo'lsa, skript **to'xtaydi** va nima qilish kerakligini yozadi (`docs/windows-cheklovlari.md` dagi ro'yxat asosida).
+2. Fayllarni nusxalash.
+3. **Defender istisnosi:** o'rnatish papkasini qo'shish (imzosiz single-file exe noto'g'ri belgilanmasligi uchun).
+4. Firewall: 5000-port, faqat `LocalSubnet` uchun.
+5. Statik IP.
+6. Sleep va Hibernate'ni o'chirish.
+7. Avtostart.
+8. WebView2 Runtime yo'q bo'lsa, offline o'rnatuvchidan o'rnatish.
+9. `C:\ProgramData\Kompyuterxona\` papkasiga yozish huquqini berish (baza, loglar, zaxiralar).
+10. 1-qadamda port band chiqqan bo'lsa, boshqa port taklif qilish (`netstat -ano | findstr :5000` va `netsh interface ipv4 show excludedportrange protocol=tcp`).
+11. Tavsiya: admin kompyuterga **UPS** (zahira quvvat manbai) — svet o'chganda baza shikastlanmasligi uchun. Zaxira nusxalarni haftada bir USB diskka ko'chirish ham qo'llanmaga yoziladi.
 
 Haqiqiy joyda SSH yoqilmaydi.
 
@@ -711,6 +745,8 @@ Bu savollarga javob kelguncha qavs ichidagi vaqtinchalik qarorlar bilan ishlayve
 - Tarmoq kartalari va BIOS'lar Wake-on-LAN'ni qo'llab-quvvatlaydimi? (joyida tekshiriladi)
 - Mijozlar uchun alohida (mehmon) Wi-Fi tarmog'i bormi? (admin paroli ochiq matnda uzatilgani uchun muhim)
 - Client kompyuterlardagi Windows versiyasi: 10 mi, 11 mi? (Microsoft Windows 10 ni 2025-yil 14-oktabrdan qo'llab-quvvatlamaydi; dastur unda ishlaydi, lekin 11 afzal)
+- Klub kompyuterlarida qaysi antivirus o'rnatilgan? (Defender deb hisoblaymiz; Kaspersky, Avast yoki 360 bo'lsa istisnolar boshqacha qo'yiladi)
+- **Smart App Control yoqilganmi?** (o'chirilgan deb hisoblaymiz — yoqilgan bo'lsa imzosiz exe umuman ishga tushmaydi, 15-bo'limga qarang)
 
 **Javob olingan savollar (2026-10-23):**
 
@@ -812,3 +848,13 @@ Asosiy o'zgarishlar:
 | Jismoniy xavfsizlik va HTTP'dagi parol xatari ochiq yozildi | 11 |
 
 Yangi hujjatlar: `docs/windows-cheklovlari.md` (platforma cheklovlari) va `docs/kiosk-xavfsizlik-tekshiruvi.md` (8-bosqichda belgilanadigan ro'yxat).
+
+### Tarqatish qarorlari (2026-10-23)
+
+Admin dasturini exe qilish taklifi muhokama qilindi. Natija: **arxitektura o'zgarmaydi** — reja boshidan beri exe edi, PWA hech qachon ko'zda tutilmagan. Uchta qaror yozib qo'yildi:
+
+- **Panel ichi — HTML + WebView2** (4-bo'limdagi "Nega exe, PWA emas" qarori). Muqobil variant (faqat C# WinForms/WPF interfeysi) rad etildi: u telefondan kirishni yo'q qiladi va panelni tahrirlashni qiyinlashtiradi.
+- **Exe'lar imzolanmaydi (v1).** Tarqatish USB bilan; o'rnatish skripti Defender istisnosini va Firewall qoidasini oldindan qo'yadi; Smart App Control o'rnatishdan **oldin** tekshiriladi (15 va 16-bo'limlar).
+- Single-file publish standart bo'lib qoladi; antivirus to'sqinlik qilsa, papka + DLL ko'rinishiga o'tiladi.
+
+Antivirus bilan asosiy kurash **client** dasturida bo'ladi, admin'da emas — sabablari `docs/windows-cheklovlari.md` D bo'limida.
