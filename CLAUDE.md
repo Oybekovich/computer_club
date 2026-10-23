@@ -125,6 +125,8 @@
 - Tashqi NuGet paketlarni minimal saqla.
 - Admin loyihasi bitta loyihada ham web server, ham WinForms bo'ladi: `Sdk="Microsoft.NET.Sdk.Web"`, `TargetFramework` = `net10.0-windows`, `UseWindowsForms` = `true`, `OutputType` = `WinExe`.
 - WebView2 Runtime Windows 11 da bor, Windows 10 da odatda Edge bilan birga keladi. AdminApp ishga tushganda WebView2 topilmasa, tushunarli xabar chiqarsin. Deploy paketiga WebView2 offline o'rnatuvchisi (Evergreen Standalone) qo'shiladi.
+- **WebView2 ma'lumot papkasi majburan belgilanadi:** `C:\ProgramData\Kompyuterxona\WebView2`. Standart holatda WebView2 exe **yonida** papka yaratmoqchi bo'ladi, `Program Files` ichida esa yozishga ruxsat yo'q va dastur ochilmaydi. Papka `CoreWebView2Environment.CreateAsync(userDataFolder: ...)` orqali beriladi.
+- `PasswordHasher<T>` uchun `Microsoft.Extensions.Identity.Core` paketi qo'shiladi (butun Identity tizimi emas, faqat xeshlash qismi).
 
 ---
 
@@ -179,6 +181,10 @@ Dastur fayllari `Program Files` ichida turadi, shuning uchun oddiy (administrato
 
 Fayl: `C:\ProgramData\Kompyuterxona\data.db`. Sxema EF Core migratsiyalari bilan boshqariladi; dastur ishga tushganda `Database.Migrate()` avtomatik chaqiriladi.
 
+Baza ochilganda ikkita sozlama qo'yiladi: `PRAGMA journal_mode=WAL` (o'qish va yozish bir-birini kutmaydi) va `PRAGMA synchronous=FULL` (svet o'chsa oxirgi yozuv yo'qolmaydi). Yozuv hajmi juda kichik, shuning uchun bu sezilarli sekinlashtirmaydi.
+
+**Papka huquqi:** o'rnatish skripti `C:\ProgramData\Kompyuterxona\` ga `Users` guruhi uchun "Modify" huquqini beradi. Aks holda administrator bo'lmagan foydalanuvchi na bazani, na logni yoza oladi.
+
 ### Computers — kompyuterlar
 
 | Ustun | Turi | Izoh |
@@ -193,6 +199,8 @@ Fayl: `C:\ProgramData\Kompyuterxona\data.db`. Sxema EF Core migratsiyalari bilan
 | Notes | text, null | |
 
 Holat (Oflayn / Bo'sh / Band) bazada saqlanmaydi. U xotirada (`ConnectionRegistry`) hisoblanadi: client ulanganmi va faol sessiya bormi.
+
+**O'chirish qoidasi:** sessiya tarixi bor kompyuter (va shunga o'xshab, ishlatilgan dastur) bazadan **o'chirilmaydi** — aks holda eski hisobotlar buziladi. Ular `IsEnabled` / `IsActive` = false qilinadi va panelda ko'rinmaydi. Haqiqiy `DELETE` faqat hech qachon ishlatilmagan yozuv uchun ruxsat etiladi.
 
 ### Applications — ruxsat etiladigan dasturlar katalogi
 
@@ -229,9 +237,15 @@ PK: (ComputerId, ApplicationId).
 | GrantedSeconds | int | barcha to'lovlar bo'yicha berilgan jami vaqt |
 | UsedSeconds | int, null | sessiya yopilganda yoziladi |
 | TotalAmount | long | jami to'langan pul, so'mda |
+| PausedAt | datetime (UTC), null | null bo'lmasa — sessiya hozir pauzada |
+| PausedSeconds | int | pauzada o'tgan jami soniyalar; tugash vaqtini shuncha suradi |
 | EndReason | text, null | `TimeUp`, `StoppedByAdmin`, ... |
 
 Bir kompyuterda bir vaqtda faqat bitta faol sessiya bo'lishi mumkin.
+
+**Pauza nega kerak:** svet o'chsa yoki kompyuter kutilmaganda qayta yuklansa, mijozning puli yonib ketmasligi kerak. Admin sessiyani pauzaga qo'yadi, keyin davom ettiradi; pauzada o'tgan vaqt `PausedSeconds` ga qo'shiladi va tugash vaqti shuncha suriladi. Ustunlar **1-bosqichdanoq** qo'shiladi (keyinchalik baza migratsiyasi qilmaslik uchun), tugmasi esa 9-bosqichda UI'ga chiqadi.
+
+**Indekslar:** `Sessions(ComputerId, EndedAt)` — faol sessiyani tez topish uchun; `Sessions(StartedAt)` — hisobotlar uchun; `Payments(SessionId)`.
 
 ### Payments — to'lovlar
 
@@ -242,8 +256,10 @@ Bir kompyuterda bir vaqtda faqat bitta faol sessiya bo'lishi mumkin.
 | Amount | long | so'mda |
 | SecondsAdded | int | |
 | HourlyRateUsed | long | to'lov paytidagi soatlik narx |
-| Type | text | `Initial` yoki `TopUp` |
+| Type | text | `Initial`, `TopUp` yoki `Adjustment` |
 | CreatedAt | datetime (UTC) | |
+
+`Adjustment` — admin xato summa kiritganda tuzatish uchun; unda `Amount` va `SecondsAdded` **manfiy** bo'lishi mumkin. 10 000 o'rniga 100 000 yozilib qolsa, sessiyani buzib qaytadan ochish shart emas. Har bir tuzatish AuditLog'ga yoziladi.
 
 ### Settings — sozlamalar (kalit-qiymat)
 
@@ -255,8 +271,11 @@ Bir kompyuterda bir vaqtda faqat bitta faol sessiya bo'lishi mumkin.
 | BackupFolder | `C:\ProgramData\Kompyuterxona\backups` | |
 | BackupDailyTime | 03:00 | |
 | BackupKeepDays | 30 | |
-| ServerPort | 5000 | |
+| ServerPort | 5000 | o'zgartirilsa AdminApp qayta ishga tushirilishi kerak |
 | ClientKeyHash | (avtomatik) | client kaliti xeshi |
+| MaxSessionHours | 24 | bitta sessiyaga beriladigan eng ko'p vaqt (xato kiritishdan himoya) |
+| AllowStartWhenOffline | false | oflayn kompyuterga sessiya ochishga ruxsat |
+| MaintenanceMinutes | 30 | texnik rejim necha daqiqadan keyin o'zi tugaydi (10.6) |
 
 ### AdminUsers — admin hisoblari
 
@@ -290,10 +309,16 @@ Narx o'zgarishi, sessiyani erta to'xtatish, kompyuter yoki dastur o'chirilishi k
   - Narx 12 000 so'm/soat, summa 5 000 → 1500 s = 25 daqiqa.
 - Admin vaqt kiritishni ham tanlashi mumkin. Vaqtdan summaga: `summa = ceil(soniya × soatlik_narx / 3600)`.
 - Har bir to'lov o'sha paytdagi narx bilan hisoblanadi va `Payments.HourlyRateUsed` ga yoziladi. Narx o'zgarsa, eski to'lovlar o'zgarmaydi.
-- Sessiya tugash vaqti: `EndsAt = StartedAt + GrantedSeconds` (server soati, UTC). Vaqt qo'shilsa `GrantedSeconds` oshadi.
+- Sessiya tugash vaqti: `EndsAt = StartedAt + GrantedSeconds + PausedSeconds` (server soati, UTC). Vaqt qo'shilsa `GrantedSeconds`, pauza bo'lsa `PausedSeconds` oshadi.
+- **Vaqt real soat bo'yicha yonadi** — mijoz o'ynayaptimi yoki yo'qmi, farqi yo'q. Kompyuter o'chib qolsa ham sanoq davom etadi; aynan shuning uchun pauza kerak.
+- **Pauza:** `PausedAt` qo'yiladi, taymer qotadi. Davom ettirilganda `PausedSeconds += (hozir − PausedAt)` va `PausedAt = null`. Pauzada ochiq dasturlar yopilmaydi.
 - Server qayta ishga tushsa, faol sessiyalar `EndsAt` bo'yicha davom etadi. `EndsAt` o'tib ketgan sessiyalar `TimeUp` sababi bilan yopiladi.
 - Admin sessiyani erta to'xtatsa: `UsedSeconds` yoziladi, pul avtomatik qaytarilmaydi (17-bo'limdagi ochiq savol).
 - Clientga absolyut vaqt emas, **qolgan soniyalar** yuboriladi, chunki kompyuterlarning soatlari farq qilishi mumkin. Client bu qiymatni `Stopwatch` (monoton soat) bilan sanaydi.
+- **Client har heartbeat'da (15 s) serverdan qolgan vaqtni qayta oladi va taymerini to'g'rilaydi.** Sababi: kompyuter uyquga ketsa `Stopwatch` to'xtab qoladi va client vaqtni noto'g'ri ko'rsatadi. Faqat qayta ulanishda sinxronlash yetarli emas.
+- **Xato kiritishdan himoya:** summa 0 yoki manfiy bo'lsa rad etiladi (`Adjustment` bundan mustasno); hisoblangan vaqt `MaxSessionHours` dan oshsa, admin alohida tasdiqlaydi ("25 soat 30 daqiqa — rostdanmi?").
+- Oflayn kompyuterga sessiya ochish standart holatda rad etiladi (`AllowStartWhenOffline=false`): aks holda mijoz hali kelmaganida pul yonib ketadi.
+- **Hisobotlarda kun chegarasi mahalliy vaqtda** (O'zbekiston UTC+5) hisoblanadi, yarim kechadan yarim kechagacha. Bazada vaqt UTC'da saqlanadi, lekin "bugungi tushum" ni UTC bo'yicha olsak, kun ertalab soat 5:00 da kesilib, tungi sessiyalar noto'g'ri kunga tushadi.
 - Bu mantiq `Services/BillingService` ichida, UI'dan alohida turadi va **xUnit testlari bilan** qoplanadi (chegaraviy holatlar: 0 summa, juda kichik summa, narx o'zgarishi, vaqt qo'shish).
 
 ---
@@ -304,12 +329,14 @@ Narx o'zgarishi, sessiyani erta to'xtatish, kompyuter yoki dastur o'chirilishi k
 
 **Ulanish va autentifikatsiya:** client `ServerUrl` ga ulanadi va `Register` ni chaqiradi. U `ClientKey` (umumiy maxfiy kalit) yuboradi. Kalit noto'g'ri bo'lsa, server ulanishni uzadi. Kalit to'g'ri, lekin kompyuter raqami bazada yo'q bo'lsa, admin panelda "Yangi kompyuter topildi" deb ko'rsatiladi; admin uni bitta tugma bilan qo'shadi (MAC va IP avtomatik to'ldiriladi).
 
+**Bitta raqamni ikki client da'vo qilsa:** oxirgi ulanish g'olib bo'ladi (eskisi uziladi) va admin panelda ogohlantirish chiqadi. Odatda bu client config'idagi raqam xato yozilganini bildiradi.
+
 **Client → Server:**
 
 | Metod | Ma'lumot | Qachon |
 |---|---|---|
 | `Register` | ComputerNumber, ClientKey, MachineName, MacAddress, IpAddress, AppVersion | Ulanganda va qayta ulanganda |
-| `Heartbeat` | State (Idle/Active), RemainingSeconds, RunningAppIds[] | Har 15 soniyada |
+| `Heartbeat` | State (Idle/Active/Paused), RemainingSeconds, RunningAppIds[] | Har 15 soniyada. Server javobida **haqiqiy** qolgan vaqtni qaytaradi, client shunga moslashadi |
 | `ReportAppLaunched` | AppId, Success, Error | Dastur ochishga urinilgandan keyin |
 | `ReportError` | Message | Jiddiy xatolikda |
 | `VerifyTechPassword` | Password | Maxfiy chiqish oynasida (10.3) |
@@ -326,12 +353,24 @@ Narx o'zgarishi, sessiyani erta to'xtatish, kompyuter yoki dastur o'chirilishi k
 | `ShowMessage` | Text | Ekranda xabar ko'rsatadi |
 | `Shutdown` | | Kompyuterni o'chiradi |
 | `Restart` | | Kompyuterni qayta yuklaydi |
+| `SessionPaused` | | Taymerni to'xtatadi, "vaqtincha to'xtatilgan" yozuvini ko'rsatadi |
+| `SessionResumed` | RemainingSeconds | Taymerni davom ettiradi |
+| `ExitToWindows` | DurationMinutes | Texnik rejim: kioskni yopadi, `explorer.exe` ni ochadi (10.6) |
+| `EnterKiosk` | | Texnik rejimni tugatadi, kioskka qaytaradi |
 
 `AllowedApps` elementi: `{ Id, Name, ExePath, Arguments, WorkingDirectory, Category }`.
 
 **Qayta ulanish:** `WithAutomaticReconnect` cheksiz urinishlar bilan (5–30 soniya oralig'ida). Qayta ulanganda client yana `Register` chaqiradi, server esa joriy holatni qayta yuboradi (sessiya bo'lsa `SessionStarted`).
 
 **Wake-on-LAN** SignalR orqali emas. O'chiq kompyuter tarmoqqa ulanmagan bo'ladi, shuning uchun server UDP "magic packet" yuboradi: 6 bayt `0xFF` va undan keyin MAC manzil 16 marta. Paket `255.255.255.255` va subnet broadcast manziliga, 9-portga yuboriladi. Buning uchun tashqi kutubxona kerak emas.
+
+**WOL ishlashi uchun beshta shart — hammasi birdan bajarilishi kerak:**
+
+1. Client **kabel (Ethernet)** bilan ulangan. Wi-Fi orqali WOL amalda ishlamaydi. *(Kelishildi: kompyuterlar kabel bilan ulanadi.)*
+2. BIOS/UEFI'da WOL yoqilgan.
+3. Windows'da tarmoq kartasi xossalarida "Wake on Magic Packet" va "Allow this device to wake the computer" yoqilgan.
+4. **Fast Startup o'chirilgan** (`HiberbootEnabled=0`). Aks holda Windows'ning "O'chirish"i haqiqiy o'chirish bo'lmaydi va karta paketni eshitmaydi.
+5. Admin va client bir xil subnetda; oradagi switch yoki router broadcast'ni bloklamaydi.
 
 ### 8.2 Admin UI ↔ Server
 
@@ -353,12 +392,17 @@ DELETE /api/computers/{id}
 
 POST   /api/computers/{id}/session         {amount} yoki {minutes}
 POST   /api/computers/{id}/session/topup   {amount} yoki {minutes}
+POST   /api/computers/{id}/session/adjust  {amount} yoki {minutes} — manfiy bo'lishi mumkin (tuzatish)
+POST   /api/computers/{id}/session/pause   sessiyani to'xtatib turish
+POST   /api/computers/{id}/session/resume  davom ettirish
 POST   /api/computers/{id}/session/stop
 POST   /api/computers/{id}/launch          {appId}
 POST   /api/computers/{id}/message         {text}
 POST   /api/computers/{id}/wake
 POST   /api/computers/{id}/shutdown
 POST   /api/computers/{id}/restart
+POST   /api/computers/{id}/maintenance      {minutes} — Windows'ga chiqarish (texnik rejim)
+POST   /api/computers/{id}/maintenance/stop kioskka qaytarish
 POST   /api/computers/wake-all
 POST   /api/computers/shutdown-idle        faqat bo'sh kompyuterlarni o'chirish
 
@@ -392,6 +436,9 @@ GET    /api/backups
 - Bir vaqtda faqat bitta nusxa ishlaydi (Mutex). Ikkinchi marta ochilsa, mavjud oyna oldinga chiqadi.
 - **Oynani yopish dasturdan chiqish degani emas.** X bosilsa, oyna tray'ga (soat yonidagi belgi) yashirinadi, server esa ishlashda davom etadi. Aks holda barcha kompyuterlar server bilan aloqani yo'qotadi. To'liq chiqish faqat tray menyusidagi "Chiqish" orqali va tasdiq bilan: "Faol sessiyalar bor. Rostdan chiqasizmi?"
 - Sozlamalarda "Windows bilan birga ishga tushirish" (Task Scheduler, foydalanuvchi kirganda ishga tushadigan vazifa).
+- **Server admin foydalanuvchisi tizimga kirgan holda ishlaydi.** Admin hisobidan chiqib ketilsa (log off) yoki kompyuter o'chsa, server ham to'xtaydi: yangi sessiya ochib bo'lmaydi, lekin ishlab turgan sessiyalar client'da o'z-o'zidan sanalib tugaydi, server qaytganda esa baza bo'yicha to'g'rilanadi. Shuning uchun admin kompyuter uyquga ketmasligi va hisobdan chiqmasligi kerak (o'rnatish skripti sozlaydi).
+- **Port band bo'lishi mumkin.** 5000-portni boshqa dastur egallagan bo'lishi yoki Windows uni rezerv qilib qo'ygan bo'lishi mumkin (Hyper-V / WSL o'rnatilgan kompyuterlarda uchraydi; Kestrel "socket ruxsat etilmagan", xato 10013 deb to'xtaydi). Bunda tushunarli xabar chiqadi, tekshirish buyrug'i ko'rsatiladi (`netsh interface ipv4 show excludedportrange protocol=tcp`) va portni `ServerPort` sozlamasidan o'zgartirish mumkin. Port bazadan Kestrel ishga tushishidan **oldin** o'qiladi; agar baza buzilgan yoki port xato bo'lsa, buyruq satridan majburan berish yo'li qoldiriladi: `AdminApp.exe --port 5050`.
+- **Firewall:** birinchi ishga tushishda Windows "ruxsat berasizmi?" deb so'raydi va bunga administrator huquqi kerak. O'rnatish skripti qoidani oldindan qo'shadi, shunda so'rov umuman chiqmaydi.
 
 ### 9.2 Birinchi ishga tushish
 
@@ -404,7 +451,7 @@ GET    /api/backups
 1. **Login.**
 2. **Bosh panel** — kompyuterlar kartalar to'rida:
    - Har bir kartada: raqam va nom, holat rangi (kulrang — oflayn, yashil — bo'sh, ko'k — band, qizil — ogohlantirish vaqti qolgan), qolgan vaqt (brauzerda har soniyada sanaladi), ochiq dastur nomi.
-   - Karta tugmalari: Sessiya boshlash, Vaqt qo'shish, To'xtatish, Dastur ochish, Xabar yuborish, Yoqish, O'chirish, Qayta yuklash.
+   - Karta tugmalari: Sessiya boshlash, Vaqt qo'shish, Pauza / Davom ettirish, To'xtatish, Dastur ochish, Xabar yuborish, Yoqish, O'chirish, Qayta yuklash, **Windows'ga chiqarish** (texnik rejim, 10.6).
    - Yuqori qatorda: bugungi tushum, band kompyuterlar soni, "Hammasini yoqish" tugmasi.
    - Xavfli amallar (to'xtatish, o'chirish) tasdiq so'raydi.
 3. **Sessiya boshlash / vaqt qo'shish oynasi** — summa yoki vaqt kiritish, jonli hisob ("15 000 so'm = 1 soat 30 daqiqa"), tez tugmalar (masalan 5 000 / 10 000 / 20 000).
@@ -414,6 +461,8 @@ GET    /api/backups
    - Eslatma UI'da ko'rinsin: exe yo'li **client kompyuterlarda** mavjud bo'lishi kerak. Client dasturni topa olmasa, plitkani kulrang qiladi va serverga xabar beradi; admin panelda ogohlantirish chiqadi.
 5. **Kompyuterlar** — qo'shish va tahrirlash (raqam, nom, MAC). "Yangi kompyuter topildi" ro'yxatidan bir bosishda qo'shish.
 6. **Hisobotlar** — sana oralig'i bo'yicha sessiyalar jadvali (kompyuter, boshlanish, tugash, davomiylik, summa, tugash sababi), jami summa va jami soatlar, kompyuterlar bo'yicha guruhlash, CSV eksport (Excel'da ochish uchun).
+   - Kun chegarasi **mahalliy vaqtda**, yarim kechadan yarim kechagacha (kelishilgan qaror). Sessiya qaysi kunda **boshlangan** bo'lsa, o'sha kunga yoziladi.
+   - CSV fayli UTF-8 **BOM** bilan va `;` ajratuvchi bilan yoziladi. Aks holda o'zbek/rus tilidagi Windows'da Excel ustunlarni ajratmaydi va harflarni buzib ko'rsatadi.
 7. **Sozlamalar** — soatlik narx, ogohlantirish daqiqasi, vaqt tugaganda amal, zaxira papkasi va vaqti, Windows bilan ishga tushirish, client kaliti, parolni almashtirish, amallar jurnali (AuditLog).
 
 ### 9.4 Telefon orqali kirish
@@ -434,19 +483,19 @@ GET    /api/backups
 ### 10.1 Holatlar
 
 ```
-[Ulanmagan] ──server topildi──▶ [Bo'sh] ──SessionStarted──▶ [Faol]
+[Ulanmagan] ──server topildi──▶ [Bo'sh] ──SessionStarted──▶ [Faol] ⇄ [Pauza]
                                    ▲                          │
-                                   │                          │ N daqiqa qoldi
-                                   │                          ▼
-                                   └──── vaqt tugadi ──[Ogohlantirish]
+                                   └──── vaqt tugadi ─────────┘
 ```
 
-Admin sessiyani to'xtatsa, Faol holatdan to'g'ridan-to'g'ri Bo'sh holatga o'tiladi.
+**Ogohlantirish alohida holat emas** — u Faol holat ustida chiqadigan kichik oyna.
+Admin sessiyani to'xtatsa yoki vaqt tugasa, Faol holatdan Bo'sh holatga o'tiladi.
 
 - **Ulanmagan:** "Server bilan aloqa yo'q. Qayta ulanilmoqda..." va kompyuter raqami. Mijoz hech narsa ocha olmaydi. Faol sessiya paytida aloqa uzilsa, client Faol holatda qoladi va vaqtni o'zi sanaydi; ekranda faqat kichik "aloqa yo'q" belgisi chiqadi.
 - **Bo'sh (qulflangan):** to'liq ekran: katta kompyuter raqami, "Kompyuter bo'sh. Admin bilan bog'laning" yozuvi, soat.
 - **Faol:** katta qolgan vaqt va ruxsat etilgan dasturlar plitkalari (kategoriyalar bo'yicha, exe'dan olingan ikonka bilan). Plitka bosilsa dastur ochiladi.
 - **Ogohlantirish:** `WarningMinutes` qolganda doim ustda turadigan kichik oyna: "5 daqiqa qoldi". 1 daqiqa qolganda yana chiqadi.
+- **Pauza:** admin sessiyani vaqtincha to'xtatganda (masalan svet o'chganda) ekranda "Sessiya vaqtincha to'xtatilgan" yozuvi chiqadi, taymer qotadi, ochiq dasturlar yopilmaydi.
 - **Vaqt tugadi:** ochilgan dasturlar yopiladi (avval yumshoq `CloseMainWindow`, taxminan 10 soniya kutib, keyin `Kill`), so'ng Bo'sh ekranga qaytiladi yoki `TimeUpAction` ga ko'ra kompyuter o'chiriladi.
 
 ### 10.2 Dasturlarni ochish va kuzatish
@@ -454,6 +503,7 @@ Admin sessiyani to'xtatsa, Faol holatdan to'g'ridan-to'g'ri Bo'sh holatga o'tila
 - Faqat serverdan kelgan ro'yxatdagi dasturlar ochiladi. Client o'zboshimchalik bilan boshqa exe ochmaydi.
 - Ochilgan har bir jarayon **Windows Job Object**'ga biriktiriladi. Shunda vaqt tugaganda uning bola jarayonlari ham birga yopiladi.
 - Ma'lum muammo: Steam, Epic, Riot kabi launcherlar o'yinni alohida jarayon sifatida ochadi va u Job Object'dan "qochib" ketishi mumkin. Shuning uchun qo'shimcha himoya: dasturning exe nomi va papkasi bo'yicha jarayonlarni qidirib yopish. Bu qism real o'yinlar bilan albatta sinab ko'riladi (13-bo'lim, 6-bosqich).
+- **Muhim shart:** launcherlar Windows bilan birga avtomatik ishga tushmasligi kerak. Agar Steam allaqachon ishlab tursa, o'yinni **biz emas, Steam** ochadi — u bizning Job Object'imizga umuman tushmaydi va vaqt tugaganda yopilmaydi. O'rnatishda launcherlarning avtostarti o'chiriladi va ular doim client orqali ochiladi.
 - Exe topilmasa: plitka kulrang bo'ladi va serverga xabar yuboriladi.
 
 ### 10.3 Kiosk himoyasi (faqat test client'da, 8-bosqichda)
@@ -462,9 +512,15 @@ Admin sessiyani to'xtatsa, Faol holatdan to'g'ridan-to'g'ri Bo'sh holatga o'tila
 - **Shell faqat shu foydalanuvchi uchun almashtiriladi:** `HKCU\Software\Microsoft\Windows NT\CurrentVersion\Winlogon` → `Shell` = `"C:\Program Files\Kompyuterxona\Client\ClientApp.exe" --watchdog`. Administrator hisobida oddiy desktop saqlanib qoladi, muammo bo'lsa o'sha hisobga kirib tuzatish mumkin. HKLM'dagi umumiy `Shell` qiymatiga tegilmaydi. Bu usul maqsadli Windows nashrlarida (Home/Pro) ishlashi sinab tasdiqlanadi.
 - `Mijoz` foydalanuvchisi uchun cheklovlar (`HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\...`): Task Manager o'chiriladi (`DisableTaskMgr`), Ctrl+Alt+Del menyusidagi "Qulflash", "Parolni o'zgartirish", "Chiqish" yashiriladi (`DisableLockWorkstation`, `DisableChangePassword`, `NoLogoff`). Ctrl+Alt+Del'ning o'zini dastur bloklay olmaydi, bu Windows'ning himoyalangan kombinatsiyasi.
 - Kiosk oynasi: chegarasiz, to'liq ekran. Bo'sh holatda doim eng ustda. Alt+F4 Bo'sh va Faol ekranlarda e'tiborsiz qoldiriladi.
-- **Watchdog:** ClientApp yiqilsa, qora ekran qolmasligi kerak. Shell sifatida `ClientApp.exe --watchdog` ishga tushadi; u asosiy UI jarayonini ochadi va u kutilmaganda yopilsa qayta ochadi.
-- **Texnik xizmat uchun maxfiy chiqish:** maxsus tugmalar kombinatsiyasi (masalan `Ctrl+Shift+Alt+F12`) → parol oynasi → parol to'g'ri bo'lsa `explorer.exe` ishga tushadi. Parol server orqali admin paroli bilan tekshiriladi (`VerifyTechPassword`); server bilan aloqa bo'lmasa, config'dagi xesh bilan.
+- **Qo'riqchi (watchdog) — ikki qatlam.** (1) Shell sifatida `ClientApp.exe --watchdog` ishga tushadi; u asosiy UI jarayonini ochadi va u yopilsa qayta ochadi. (2) Qo'riqchining o'zi yopilsa, uni **Task Scheduler vazifasi** qaytaradi: administrator yaratgan vazifa `Mijoz` kirganda ishga tushadi va har 1 daqiqada takrorlanadi ("allaqachon ishlayotgan bo'lsa, yangisini boshlama"). Vazifani oddiy foydalanuvchi o'zgartira yoki o'chira olmaydi.
+  Windows'ning `AutoRestartShell` sozlamasiga **tayanilmaydi**: u shell "yiqilgan" holatdagina qaytaradi, foydalanuvchi ataylab yopganda qaytarmasligi mumkin.
+  Qo'riqchi texnik rejim belgisi (10.6) turganda kioskni qayta ochmaydi.
+- **Mijoz uchun kioskdan chiqish yo'li — nol.** Windows'ga o'tishning faqat ikkita yo'li bor, ikkalasi ham adminniki (10.6).
+- **Ruxsat etilgan dastur orqali "qochib chiqish".** Exe ro'yxati qum qutisi (sandbox) emas: brauzerda `Ctrl+O` bosib fayl oynasini ochish, papkalarni ko'rish va hatto boshqa dasturni ishga tushirish mumkin. Shuning uchun brauzer uchun Windows siyosatlari (Registry orqali) qo'yiladi: `file://*` bloklanadi, yuklab olish, Developer Tools va kengaytmalar o'chiriladi. Qo'shimcha qatlam sifatida Software Restriction Policy (SRP) bilan faqat ruxsat etilgan papkalardagi exe'lar ishga tushishiga ruxsat beriladi — shunda fayl oynasi orqali `cmd.exe` yoki boshqa dastur ochilmaydi.
+- **Windows Update** o'rtada kompyuterni qayta yuklab, mijozning o'yinini buzishi mumkin. Client kompyuterlarda "faol soatlar" (active hours) klub ish vaqtiga qo'yiladi va avtomatik qayta yuklash cheklanadi.
+- **Quvvat sozlamalari:** client uyquga ketmasligi kerak (uyquda server bilan aloqa uziladi va taymer to'xtab qoladi). Ekran o'chishi mumkin, kompyuter esa yo'q. Faol sessiya paytida client `SetThreadExecutionState` bilan uyquni qo'shimcha ravishda to'xtatib turadi.
 - Har bir kiosk o'zgarishi uchun **qaytarish (rollback) skripti** bo'lishi shart va u o'zgarishdan **OLDIN** yoziladi.
+- Barcha ma'lum qochish yo'llari va ularning sinovi: `docs/kiosk-xavfsizlik-tekshiruvi.md`. 8-bosqich faqat shu ro'yxat to'liq belgilangandan keyin tugagan hisoblanadi.
 
 ### 10.4 Yengillik talablari
 
@@ -491,17 +547,42 @@ Repo'da faqat `client.config.example.json` saqlanadi. Haqiqiy config `.gitignore
 
 Client `--windowed` parametri bilan oddiy oyna rejimida ham ishga tushadi (ishlab chiqish va sinov uchun).
 
+Config topilmasa yoki buzilgan bo'lsa, client qora ekranda qolmaydi: to'liq ekranda "Sozlama fayli topilmadi — administratorga murojaat qiling" yozuvi va faylning to'liq yo'li ko'rsatiladi.
+
+`C:\ProgramData\Kompyuterxona\Client\` papkasiga `Mijoz` foydalanuvchisi **yoza olishi** kerak (loglar va texnik rejim belgisi uchun); `client.config.json` esa unga faqat o'qish uchun ochiq.
+
+### 10.6 Texnik rejim (kioskdan Windows'ga chiqish)
+
+Mijoz hech qanday yo'l bilan kioskdan chiqa olmaydi. Windows'ga o'tishning **faqat ikkita** yo'li bor, ikkalasi ham adminniki:
+
+| Yo'l | Qachon ishlatiladi |
+|---|---|
+| Admin paneldagi "Windows'ga chiqarish" tugmasi (masofadan) | Odatdagi holat |
+| Client'da maxfiy kombinatsiya (`Ctrl+Shift+Alt+F12`) → parol oynasi → **admin paroli** | Server bilan aloqa bo'lmaganda |
+
+Parol server orqali tekshiriladi (`VerifyTechPassword`); aloqa bo'lmasa config'dagi xesh bilan. Parolni bilmagan mijoz bu yo'ldan foydalana olmaydi.
+
+**Texnik rejimga o'tilganda** client `C:\ProgramData\Kompyuterxona\Client\maintenance.flag` faylini yozadi (ichida tugash vaqti), kiosk oynasini yopadi va `explorer.exe` ni ishga tushiradi. **Qo'riqchi shu belgi amal qilib turganda kioskni qayta ochmaydi** — aks holda u har daqiqada ustma-ust ochilib, texnik xizmatga xalaqit berardi.
+
+**Kioskka qaytish** uch yo'l bilan: ekrandagi kichik "Kioskka qaytish" tugmasi, muddat tugashi (`MaintenanceMinutes`, standart 30 daqiqa), yoki kompyuterni qayta yuklash. Ya'ni admin belgini o'chirishni unutib qo'ysa ham, kiosk o'zi qaytadi.
+
+Texnik rejimga kirish va chiqish AuditLog'ga yoziladi.
+
 ---
 
 ## 11. Xavfsizlik
 
 - **Admin panel:** login majburiy; parol PBKDF2 xeshi bilan saqlanadi; cookie `HttpOnly` va `SameSite=Strict`; 5 marta noto'g'ri urinishdan keyin qisqa muddatga bloklash.
-- **Client kompyuterlardan admin panelni bloklash:** mijoz kiosk ichidagi brauzerda `http://<admin-IP>:5000` ni ochib ko'rishi mumkin. Shuning uchun ro'yxatdagi client kompyuterlar IP manzillaridan keladigan so'rovlar admin UI va `/api` ga ruxsat olmaydi (403). Ular uchun faqat `/hubs/client` ochiq.
+- **Client kompyuterlardan admin panelni bloklash:** mijoz kiosk ichidagi brauzerda `http://<admin-IP>:5000` ni ochib ko'rishi mumkin. Shuning uchun ro'yxatdagi client kompyuterlar IP manzillaridan keladigan so'rovlar admin UI va `/api` ga ruxsat olmaydi (403); ular uchun faqat `/hubs/client` ochiq. **Lekin asosiy himoya bu emas, balki login.** IP ro'yxati DHCP tufayli eskirishi mumkin va hali ro'yxatga olinmagan yangi client bloklanmaydi — shuning uchun u faqat qo'shimcha qatlam sifatida qaraladi.
 - **Clientlar:** faqat to'g'ri `ClientKey` bilan ulanadi. Kalitni admin sozlamalarda yangilashi mumkin.
 - **Faqat LAN:** Firewall qoidasi `RemoteAddress = LocalSubnet` bilan. Routerda port forwarding qilinmaydi.
-- **HTTP (HTTPS emas):** LAN ichida qabul qilinadi. Shuning uchun Wi-Fi albatta parolli bo'lishi kerak; qo'llanmada buni eslatamiz.
+- **HTTP (HTTPS emas):** LAN ichida qabul qilinadi, lekin bu shuni bildiradi: admin paroli tarmoq ichida **ochiq matnda** uzatiladi. Shuning uchun Wi-Fi kuchli parol bilan (WPA2/WPA3) himoyalanadi va mijozlarga Wi-Fi paroli berilmaydi; mijozlar uchun alohida (mehmon) tarmoq bo'lsa eng yaxshisi. Keyinchalik kerak bo'lsa, o'zini-o'zi imzolagan sertifikat bilan HTTPS qo'shish mumkin — telefon brauzerida bir marta "ishonaman" deb tasdiqlashga to'g'ri keladi.
 - Parollar va kalitlar logga yozilmaydi va git'ga tushmaydi.
 - `Mijoz` foydalanuvchisi administrator emas; dastur fayllari `Program Files` da.
+- **Client kaliti client kompyuterdagi faylda ochiq turadi.** Mijoz uni o'qib olsa, ko'pi bilan o'zini "client" qilib ko'rsata oladi — pul yoki vaqt qo'sha olmaydi, buning uchun admin login kerak. Bu qabul qilinadigan xatar; kalit o'g'irlangani sezilsa, admin uni sozlamalardan yangilaydi.
+- **Jismoniy xavfsizlik dastur ishi emas.** Reset tugmasi, quvvatni uzish, USB'dan boot qilish, korpusni ochib disk olish — bularni hech qanday dastur to'sa olmaydi. BIOS paroli, boot tartibini qulflash va korpus qulfi kerak (buni siz qo'lda qilasiz).
+
+> Windows platformasining barcha cheklovlari, xatarlari va ularning yechimlari alohida hujjatda: **`docs/windows-cheklovlari.md`**. Yangi bosqichni boshlashdan oldin shu hujjatning tegishli qismini o'qi.
 
 ---
 
@@ -533,8 +614,8 @@ Har bir bosqich kichik qadamlarga bo'linadi. Bosqich faqat "Tayyor" mezoni bajar
 | 5 | Client asosi | WPF, `--windowed` rejim, ulanish va qayta ulanish, Bo'sh/Faol ekranlar, taymer | Admin sessiya boshlasa client'da taymer chiqadi, tugaganda Bo'sh ekranga qaytadi |
 | 6 | Dasturlar | Ochish, Job Object, yopish, ogohlantirish oynasi | Brauzer va kamida bitta launcher orqali ochiladigan o'yin bilan sinovdan o'tdi |
 | 7 | Masofaviy boshqaruv | WOL, o'chirish, qayta yuklash, xabar | O'chiq test kompyuter WOL bilan yonadi |
-| 8 | Kiosk himoyasi | Avval rollback skripti; keyin `Mijoz` foydalanuvchisi, shell, cheklovlar, watchdog, maxfiy chiqish | Qayta yuklangandan keyin faqat kiosk ko'rinadi; rollback ishlaydi |
-| 9 | Sayqal | Zaxira, avtostart, hisobot va CSV, AuditLog | Hammasi admin panel orqali ishlaydi |
+| 8 | Kiosk himoyasi | Avval rollback skripti; keyin `Mijoz` foydalanuvchisi, shell, cheklovlar, Task Scheduler qo'riqchisi, brauzer siyosatlari, texnik rejim | Qayta yuklangandan keyin faqat kiosk ko'rinadi; `docs/kiosk-xavfsizlik-tekshiruvi.md` dagi barcha qochish yo'llari yopilgan; rollback ishlaydi |
+| 9 | Sayqal | Zaxira, avtostart, hisobot va CSV, AuditLog, sessiya pauzasi va to'lov tuzatish | Hammasi admin panel orqali ishlaydi |
 | 10 | Deploy | `install-admin.ps1`, `install-client.ps1`, `uninstall`/rollback, `docs/admin-qollanma.md` | Toza Windows'da skript bilan noldan o'rnatiladi |
 | 11 | Yakuniy sinov | 2 kompyuterda to'liq ssenariy: uzoq ishlash, server qayta yuklanishi, kabel uzilishi | Hech qanday sessiya va pul ma'lumoti yo'qolmaydi |
 
@@ -574,7 +655,9 @@ dotnet publish src/Kompyuterxona.Client -c Release -r win-x64 --self-contained t
 
 - `PublishTrimmed` ishlatma: WinForms va WPF bilan mos emas.
 - `wwwroot` fayllari exe ichiga joylanadi (`ManifestEmbeddedFileProvider`), shunda admin uchun haqiqatan bitta fayl bo'ladi.
-- WebView2 single-file rejimda to'g'ri ishlashini 4-bosqichda alohida tekshir.
+- WebView2 single-file rejimda to'g'ri ishlashini 4-bosqichda alohida tekshir: `WebView2Loader.dll` va SQLite'ning `e_sqlite3.dll` native fayllari exe ichidan chiqarilishi kerak (`IncludeNativeLibrariesForSelfExtract` aynan shuning uchun).
+- Exe imzolanmagan bo'ladi, ustiga-ustak u shell almashtiradi va jarayonlarni yopadi — shuning uchun SmartScreen va ba'zi antiviruslar ogohlantirishi mumkin. O'rnatishdan keyin Defender'ga papkani istisno qilib qo'yish kerak bo'lishi mumkin; qo'llanmada yoziladi.
+- Yakuniy (mijozga beriladigan) `publish` Windows kompyuterda bajariladi.
 
 ---
 
@@ -590,8 +673,12 @@ Bu skriptlar 10-bosqichda yoziladi. Hozir faqat yodda tut.
 4. `Mijoz` foydalanuvchisini yaratish va avtomatik login sozlash (parolni ochiq matnda Registry'da saqlamaslik uchun Sysinternals Autologon tavsiya qilinadi; u deploy paketiga qo'shiladi).
 5. `Mijoz` uchun shell va cheklovlar.
 6. Tarmoq kartasida Wake-on-LAN ruxsatini yoqishga urinish (natijani ko'rsatish). BIOS'dagi WOL qo'lda yoqiladi.
-7. Rollback skriptini ham o'rnatish.
-8. Client uchun kiruvchi Firewall port **shart emas** (ulanishni client o'zi boshlaydi).
+7. **Fast Startup'ni o'chirish** (WOL ishlashi uchun), uyquni o'chirish, Windows Update "faol soatlar"ini klub ish vaqtiga sozlash.
+8. `C:\ProgramData\Kompyuterxona\Client\` papkasiga `Mijoz` uchun yozish huquqini berish.
+9. Qo'riqchi uchun Task Scheduler vazifasini yaratish (10.3).
+10. Brauzer uchun cheklov siyosatlarini Registry'ga yozish va launcherlarning avtostartini o'chirish (10.2, 10.3).
+11. Rollback skriptini ham o'rnatish.
+12. Client uchun kiruvchi Firewall port **shart emas** (ulanishni client o'zi boshlaydi).
 
 **`install-admin.ps1`:**
 
@@ -601,6 +688,9 @@ Bu skriptlar 10-bosqichda yoziladi. Hozir faqat yodda tut.
 4. Sleep va Hibernate'ni o'chirish.
 5. Avtostart.
 6. WebView2 Runtime borligini tekshirish, yo'q bo'lsa offline o'rnatish.
+7. `C:\ProgramData\Kompyuterxona\` papkasiga yozish huquqini berish (baza, loglar, zaxiralar).
+8. 5000-port bo'shligini tekshirish (`netstat -ano | findstr :5000` va `netsh interface ipv4 show excludedportrange protocol=tcp`), band bo'lsa boshqa port taklif qilish.
+9. Tavsiya: admin kompyuterga **UPS** (zahira quvvat manbai) — svet o'chganda baza shikastlanmasligi uchun. Zaxira nusxalarni haftada bir USB diskka ko'chirish ham qo'llanmaga yoziladi.
 
 Haqiqiy joyda SSH yoqilmaydi.
 
@@ -619,6 +709,15 @@ Bu savollarga javob kelguncha qavs ichidagi vaqtinchalik qarorlar bilan ishlayve
 - Bir nechta xodim admin bo'ladimi, har biriga alohida login kerakmi? (bitta hisob, lekin sxema bir nechtasini qo'llaydi)
 - Kompyuterlar soni aniq nechta? (15)
 - Tarmoq kartalari va BIOS'lar Wake-on-LAN'ni qo'llab-quvvatlaydimi? (joyida tekshiriladi)
+- Mijozlar uchun alohida (mehmon) Wi-Fi tarmog'i bormi? (admin paroli ochiq matnda uzatilgani uchun muhim)
+- Client kompyuterlardagi Windows versiyasi: 10 mi, 11 mi? (Microsoft Windows 10 ni 2025-yil 14-oktabrdan qo'llab-quvvatlamaydi; dastur unda ishlaydi, lekin 11 afzal)
+
+**Javob olingan savollar (2026-10-23):**
+
+- **Svet o'chganda mijozga vaqt qaytariladimi?** → Ha. Sessiya pauzasi qo'shiladi, pauzada vaqt yonmaydi (6 va 7-bo'limlar).
+- **Client kompyuterlar qanday ulangan?** → **Kabel (Ethernet)**. Demak Wake-on-LAN to'liq rejada qoladi (7-bosqich).
+- **Hisobotlarda kun qachon boshlanadi?** → Yarim kechadan (00:00), mahalliy vaqt bo'yicha.
+- **Kiosk qo'riqchisi qanday ishlaydi?** → Shell + Task Scheduler vazifasi. Mijoz uchun chiqish yo'li nol; Windows'ga o'tish faqat admin orqali (10.6).
 
 ---
 
@@ -685,4 +784,31 @@ Bu savollarga javob kelguncha qavs ichidagi vaqtinchalik qarorlar bilan ishlayve
 
 - **Bu sessiya Linux (bulutli konteyner) da ishlagan, Windows'da emas.** Shuning uchun kod shu yerda yozilib, `dotnet build` va `dotnet test` bilan tekshirildi, lekin **WinForms/WPF oynalarini ishga tushirib ko'rish imkoni bo'lmadi.** Haqiqiy ishga tushirish va ekranga qarash bilan bog'liq barcha sinovlar (12-bo'lim) sizning Windows kompyuteringizda bajariladi.
 - Shu sababli: Windows'ga bog'liq qismlarni (WebView2, Job Object, Registry, WOL, SSH, kiosk) har bir bosqichda siz o'zingiz sinab, natijani menga aytib turasiz.
-- `scripts/dev/`, `scripts/deploy/` va `docs/` papkalari hozircha bo'sh (git bo'sh papkalarni saqlamaydi) — ular 10-bosqichda to'ldiriladi.
+- `scripts/dev/` va `scripts/deploy/` papkalari hozircha bo'sh (git bo'sh papkalarni saqlamaydi) — ular 10-bosqichda to'ldiriladi.
+
+### Hujjatni qayta ko'rib chiqish (2026-10-23)
+
+1-bosqichdan oldin butun hujjat qayta ko'rib chiqildi. Topilgan kamchiliklar to'g'rilandi va to'rtta qaror kelishildi: **sessiya pauzasi**, **Task Scheduler qo'riqchisi + texnik rejim**, **hisobot kuni yarim kechadan**, **client'lar kabel bilan ulanadi**.
+
+Asosiy o'zgarishlar:
+
+| Nima | Qayerda |
+|---|---|
+| `Sessions.PausedAt`, `PausedSeconds`; yangi formula | 6, 7 |
+| `Payments.Type` ga `Adjustment` (manfiy tuzatish) | 6 |
+| `MaxSessionHours`, `AllowStartWhenOffline`, `MaintenanceMinutes` sozlamalari | 6 |
+| SQLite WAL + `synchronous=FULL`, indekslar, papka huquqlari | 6 |
+| Yumshoq o'chirish (sessiya tarixi bor yozuv o'chirilmaydi) | 6 |
+| Client har heartbeat'da vaqtni serverdan qayta oladi | 7, 8 |
+| Hisobot kuni mahalliy vaqtda; CSV uchun BOM va `;` | 7, 9 |
+| WOL'ning 5 sharti; takroriy ro'yxatdan o'tish qoidasi | 8 |
+| Port band bo'lishi (xato 10013), `--port` parametri, Firewall so'rovi | 9 |
+| Holatlar diagrammasi tuzatildi (ogohlantirish — holat emas) | 10.1 |
+| Task Scheduler qo'riqchisi; `AutoRestartShell` ga tayanilmaydi | 10.3 |
+| **Texnik rejim** — yangi 10.6 bo'lim | 10.6 |
+| Brauzer siyosatlari va SRP (dastur orqali qochishga qarshi) | 10.3 |
+| Launcher avtostarti o'chiriladi (Job Object'dan qochmasligi uchun) | 10.2 |
+| WebView2 ma'lumot papkasi majburan belgilanadi | 4 |
+| Jismoniy xavfsizlik va HTTP'dagi parol xatari ochiq yozildi | 11 |
+
+Yangi hujjatlar: `docs/windows-cheklovlari.md` (platforma cheklovlari) va `docs/kiosk-xavfsizlik-tekshiruvi.md` (8-bosqichda belgilanadigan ro'yxat).
