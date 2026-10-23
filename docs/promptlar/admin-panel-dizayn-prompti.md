@@ -1,13 +1,3 @@
-# Admin panel — dizayn prompti
-
-> Bu fayl Claude'ning dizayn dasturiga **ko'chirib qo'yish** uchun yozilgan mustaqil prompt.
-> CLAUDE.md u yerda ochilmaydi, shuning uchun kerakli hamma ma'lumot shu prompt ichida.
-> Iloji bo'lsa `docs/prototip/admin-panel.html` faylini ham biriktiring — u bosh panelning tayyor holati.
->
-> Pastdagi chiziqdan keyingi hamma matn — promptning o'zi.
-
----
-
 Kompyuterxona (o'yin klubi) boshqaruv tizimining **admin paneli** uchun bosiladigan, interaktiv UI dizayn qil. Natija — bitta mustaqil HTML fayl: ma'lumotlar soxta va server yo'q, lekin hamma tugma, oyna va taymer haqiqatan ishlashi kerak. Maqsad: panelni haqiqiy kod yozishdan oldin ishlatib ko'rish va kelishib olish.
 
 ## Mahsulot haqida
