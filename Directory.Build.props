@@ -1,0 +1,26 @@
+<Project>
+
+  <!--
+    Barcha loyihalar uchun umumiy sozlamalar.
+    Shu fayl papka daraxtidagi har bir .csproj ga avtomatik qo'shiladi,
+    shuning uchun bir xil sozlamani har bir loyihada takrorlash shart emas.
+  -->
+  <PropertyGroup>
+    <!-- null bo'lishi mumkin qiymatlarni kompilyator tekshiradi -->
+    <Nullable>enable</Nullable>
+    <!-- ko'p ishlatiladigan "using" qatorlari avtomatik qo'shiladi -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <!--
+      Windows uchun mo'ljallangan loyihalarni (WinForms, WPF) Windows'dan
+      boshqa tizimda ham kompilyatsiya qilish imkonini beradi.
+      Windows'da hech narsani o'zgartirmaydi.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <!-- telemetriya va reklama xabarlarini o'chirish -->
+    <DotNetCliTelemetryOptOut>true</DotNetCliTelemetryOptOut>
+  </PropertyGroup>
+
+</Project>

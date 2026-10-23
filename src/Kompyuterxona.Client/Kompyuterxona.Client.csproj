@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ClientApp.exe — mijoz kompyuteridagi kiosk ekran (WPF).
+    To'liq ekranli, chegarasiz oyna. 10-bo'limga qarang.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Kompyuterxona.Client</RootNamespace>
+    <AssemblyName>ClientApp</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kompyuterxona.Shared\Kompyuterxona.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Namuna config faylni repo'da saqlaymiz, lekin exe yoniga nusxalamaymiz -->
+    <None Update="client.config.example.json" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+</Project>

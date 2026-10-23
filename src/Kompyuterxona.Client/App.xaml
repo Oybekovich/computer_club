@@ -1,0 +1,8 @@
+<Application x:Class="Kompyuterxona.Client.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="Views/MainWindow.xaml">
+    <Application.Resources>
+        <!-- 5-bosqichda umumiy ranglar va uslublar shu yerga qo'shiladi -->
+    </Application.Resources>
+</Application>

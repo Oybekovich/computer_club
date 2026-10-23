@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testlar loyihasi (xUnit).
+    Asosiy maqsad: pul va vaqt hisoblash mantiqini tekshirish (7-bo'lim).
+    Windows'ga bog'liq bo'lmagan qism sinaladi, shuning uchun oddiy net10.0.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Kompyuterxona.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.NET.Test.Sdk — "dotnet test" buyrug'i ishlashi uchun -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- xunit — testlarni yozish kutubxonasi -->
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <!-- xunit.runner.visualstudio — testlarni ishga tushiruvchi -->
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kompyuterxona.Shared\Kompyuterxona.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,33 @@
+# ---- .NET build natijalari ----
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# ---- Ishlash paytidagi ma'lumotlar (hech qachon git'ga tushmaydi) ----
+# Baza fayllari
+*.db
+*.db-shm
+*.db-wal
+
+# Loglar
+logs/
+*.log
+
+# Zaxiralar
+backups/
+
+# ---- Maxfiy fayllar ----
+# Haqiqiy client sozlamasi (faqat .example fayl saqlanadi)
+client.config.json
+*.secret
+*.pfx
+
+# ---- Operatsion tizim ----
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    AdminApp.exe — bitta faylda uchta narsa:
+      1) web server (ASP.NET Core / Kestrel),
+      2) SQLite baza,
+      3) WinForms oyna (ichida WebView2 admin panelni ko'rsatadi).
+
+    Shuning uchun SDK "Web", lekin OutputType "WinExe" (konsol oynasi chiqmaydi)
+    va UseWindowsForms yoqilgan.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Kompyuterxona.Admin</RootNamespace>
+    <AssemblyName>AdminApp</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kompyuterxona.Shared\Kompyuterxona.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Umumiy kutubxona: Admin ham, Client ham shu loyihadan foydalanadi.
+    Shuning uchun u Windows'ga bog'liq emas (oddiy net10.0).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Kompyuterxona.Shared</RootNamespace>
+  </PropertyGroup>
+
+</Project>
