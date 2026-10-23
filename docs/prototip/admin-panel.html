@@ -1,0 +1,623 @@
+<title>Kompyuterxona konsoli</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  ADMIN PANEL PROTOTIPI (3-bosqichdan oldin ko'rib chiqish uchun).
+  Ma'lumotlar soxta, server yo'q — faqat ko'rinish va harakatni sinash uchun.
+  Shrift va uslublar faylning o'zida: klubda internet yo'q, shuning uchun
+  CDN ham, Google Fonts ham ishlatilmaydi (CLAUDE.md, 4-bo'lim).
+-->
+<style>
+  /* Tartib: operator konsoli — tepada smena holati, pastda kompyuter kartalari to'ri */
+  :root {
+    --bg: #0e1319;
+    --surface: #161d26;
+    --surface-2: #1c2531;
+    --line: #2a3542;
+    --fg: #e8eef5;
+    --fg-dim: #94a3b4;
+    --fg-faint: #64748b;
+    --accent: #e9a93c;
+    --accent-fg: #1a1205;
+    --st-off: #64748b;
+    --st-idle: #3fb950;
+    --st-busy: #4a9eff;
+    --st-warn: #f05a4a;
+    --st-pause: #b07cd6;
+    --radius: 10px;
+    --font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, "Noto Sans", Arial, sans-serif;
+    --font-num: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #eef1f5;
+      --surface: #ffffff;
+      --surface-2: #f6f8fa;
+      --line: #dbe2ea;
+      --fg: #0f1720;
+      --fg-dim: #4d5c6b;
+      --fg-faint: #76838f;
+      --accent: #a9680f;
+      --accent-fg: #fff7ea;
+      --st-off: #8893a1;
+      --st-idle: #157f31;
+      --st-busy: #1663d6;
+      --st-warn: #bb2c1c;
+      --st-pause: #70409f;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #f6f8fa;
+    --line: #dbe2ea;
+    --fg: #0f1720;
+    --fg-dim: #4d5c6b;
+    --fg-faint: #76838f;
+    --accent: #a9680f;
+    --accent-fg: #fff7ea;
+    --st-off: #8893a1;
+    --st-idle: #157f31;
+    --st-busy: #1663d6;
+    --st-warn: #bb2c1c;
+    --st-pause: #70409f;
+    color-scheme: light;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 15px; line-height: 1.45; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--surface); z-index: 30; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  .inner {
+    max-width: 1440px; margin-inline: auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  /* ---- Tepa panel ---- */
+  .topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .topbar .inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-block: 10px; }
+  .brand { display: flex; align-items: baseline; gap: 9px; margin-right: auto; }
+  .brand b { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand span { font-size: 12px; color: var(--fg-faint); }
+  .clock { font-family: var(--font-num); font-size: 13px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+
+  nav { border-bottom: 1px solid var(--line); background: var(--surface); }
+  nav .inner { display: flex; gap: 2px; overflow-x: auto; }
+  nav button {
+    appearance: none; border: 0; background: none; color: var(--fg-dim); font: inherit; font-size: 14px;
+    padding: 9px 13px; cursor: pointer; white-space: nowrap; border-bottom: 2px solid transparent;
+  }
+  nav button:hover { color: var(--fg); }
+  nav button[aria-current="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+
+  /* ---- Smena holati ---- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; padding-block: 16px 4px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 13px; min-width: 0; }
+  .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-faint); }
+  .stat .v { font-family: var(--font-num); font-size: 21px; font-variant-numeric: tabular-nums; margin-top: 3px; }
+  .stat.money .v { color: var(--accent); }
+  .stat .v small { font-size: 12px; color: var(--fg-dim); font-family: var(--font-ui); }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; padding-block: 14px 6px; align-items: center; }
+  .toolbar .spacer { margin-left: auto; }
+  .hint { font-size: 12px; color: var(--fg-faint); }
+
+  /* ---- Tugmalar ---- */
+  button.btn {
+    appearance: none; font: inherit; font-size: 13px; cursor: pointer; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--fg);
+    padding: 7px 11px; transition: background .12s, border-color .12s;
+  }
+  button.btn:hover { border-color: var(--fg-faint); }
+  button.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 600; }
+  button.btn.primary:hover { filter: brightness(1.08); }
+  button.btn.danger { color: var(--st-warn); }
+  button.btn:disabled { opacity: .4; cursor: not-allowed; }
+  button.btn.icon { padding: 7px 10px; }
+
+  /* ---- Kompyuter kartalari ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding-block: 10px 28px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 0; overflow: hidden; display: flex; flex-direction: column; min-width: 0;
+    border-left: 3px solid var(--c);
+  }
+  .card.offline { opacity: .62; }
+  .card-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px 0; }
+  .pcnum { font-family: var(--font-num); font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+  .pcname { font-size: 12px; color: var(--fg-faint); }
+  .pill {
+    margin-left: auto; font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    padding: 3px 8px; border-radius: 999px; color: var(--c);
+    background: color-mix(in srgb, var(--c) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c) 38%, transparent);
+  }
+  .card-body { padding: 8px 13px 12px; display: flex; flex-direction: column; gap: 3px; }
+  .time { font-family: var(--font-num); font-size: 30px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; color: var(--c); }
+  .time.muted { color: var(--fg-faint); font-size: 21px; }
+  .meta { font-size: 12px; color: var(--fg-dim); display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .meta b { font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar { height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 7px; }
+  .bar i { display: block; height: 100%; background: var(--c); }
+  .card-foot { margin-top: auto; display: flex; gap: 6px; padding: 10px 13px; border-top: 1px solid var(--line); background: var(--surface-2); flex-wrap: wrap; }
+  .card-foot .btn { flex: 1 1 auto; }
+  .card-foot .btn.icon { flex: 0 0 auto; }
+
+  /* ---- Qo'shimcha amallar menyusi ---- */
+  .sheet { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(0,0,0,.55); padding: 16px; }
+  .sheet-box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; width: min(460px, 100%); max-height: 86vh; overflow: auto; }
+  .sheet-head { padding: 15px 18px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 9px; }
+  .sheet-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
+  .sheet-head .sub { font-size: 12px; color: var(--fg-faint); margin-left: auto; }
+  .sheet-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .sheet-foot { padding: 12px 18px 16px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .menu-list { display: flex; flex-direction: column; gap: 2px; padding: 8px; }
+  .menu-list button { text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 8px; font: inherit; font-size: 14px; color: var(--fg); cursor: pointer; }
+  .menu-list button:hover { background: var(--surface-2); }
+  .menu-list button.danger { color: var(--st-warn); }
+
+  /* ---- Sessiya oynasi ---- */
+  .seg { display: flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
+  .seg button { flex: 1; border: 0; background: none; font: inherit; font-size: 13px; color: var(--fg-dim); padding: 7px; border-radius: 6px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  label.fld { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--fg-dim); }
+  input[type="number"] {
+    font-family: var(--font-num); font-size: 26px; font-variant-numeric: tabular-nums;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--fg); padding: 10px 12px; width: 100%; -moz-appearance: textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips button { font-family: var(--font-num); font-size: 13px; }
+  .result { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .result .big { font-family: var(--font-num); font-size: 24px; font-variant-numeric: tabular-nums; color: var(--accent); }
+  .result .row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--fg-dim); margin-top: 6px; }
+  .warn { font-size: 13px; color: var(--st-warn); display: flex; gap: 7px; align-items: flex-start; }
+  .confirm-text { font-size: 14px; color: var(--fg-dim); }
+  .confirm-text b { color: var(--fg); }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 60;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+    padding: 9px 17px; font-size: 13px; box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+
+  /* ---- Boshqa bo'limlar uchun o'rin ---- */
+  .placeholder { padding: 44px 0 60px; text-align: center; color: var(--fg-faint); }
+  .placeholder h3 { color: var(--fg-dim); font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+
+  .protonote { border-top: 1px solid var(--line); background: var(--surface); }
+  .protonote .inner { padding-block: 13px 18px; font-size: 12px; color: var(--fg-faint); }
+
+  @media (max-width: 520px) {
+    .grid { grid-template-columns: 1fr; }
+    .time { font-size: 27px; }
+    .brand span { display: none; }
+  }
+</style>
+
+<header class="topbar">
+  <div class="inner">
+    <div class="brand"><b>Kompyuterxona</b> <span>admin konsoli</span></div>
+    <div class="clock" id="clock">—</div>
+  </div>
+</header>
+
+<nav>
+  <div class="inner" id="nav">
+    <button aria-current="true" data-tab="panel">Bosh panel</button>
+    <button data-tab="apps">Dasturlar</button>
+    <button data-tab="pcs">Kompyuterlar</button>
+    <button data-tab="reports">Hisobotlar</button>
+    <button data-tab="settings">Sozlamalar</button>
+  </div>
+</nav>
+
+<main>
+  <div id="view-panel">
+    <div class="inner">
+      <section class="stats">
+        <div class="stat money"><div class="k">Bugungi tushum</div><div class="v" id="s-money">0</div></div>
+        <div class="stat"><div class="k">Band</div><div class="v" id="s-busy">0 <small>/ 15</small></div></div>
+        <div class="stat"><div class="k">Bo'sh</div><div class="v" id="s-idle">0</div></div>
+        <div class="stat"><div class="k">Oflayn</div><div class="v" id="s-off">0</div></div>
+        <div class="stat"><div class="k">Soatlik narx</div><div class="v" id="s-rate">0 <small>so'm</small></div></div>
+      </section>
+
+      <div class="toolbar">
+        <button class="btn" id="wake-all">Hammasini yoqish</button>
+        <button class="btn" id="shutdown-idle">Bo'shlarini o'chirish</button>
+        <span class="spacer"></span>
+        <span class="hint">Vaqt har soniyada yangilanadi</span>
+      </div>
+
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
+
+  <div id="view-other" hidden>
+    <div class="inner">
+      <div class="placeholder">
+        <h3 id="ph-title">Bo'lim</h3>
+        <p id="ph-text">Bu ekran keyingi qadamlarda chiziladi.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="protonote">
+  <div class="inner">
+    Prototip: ma'lumotlar soxta, server bilan bog'lanmagan. Maqsad — ko'rinishni va tugmalar
+    joylashuvini sinash. Haqiqiy panel 3-bosqichda shu ko'rinish asosida yoziladi.
+  </div>
+</div>
+
+<div id="overlay"></div>
+<div id="toast-host"></div>
+
+<script>
+  // ---- Soxta ma'lumotlar ----
+  var RATE = 10000;              // so'm/soat
+  var MAX_HOURS = 24;            // MaxSessionHours
+  var WARN_SEC = 5 * 60;         // WarningMinutes
+  var todayMoney = 385000;
+
+  var PCS = [
+    { n: 1,  name: "",      st: "active",  left: 5025,  app: "Google Chrome",  granted: 7200 },
+    { n: 2,  name: "",      st: "idle",    left: 0,     app: "",               granted: 0 },
+    { n: 3,  name: "",      st: "active",  left: 252,   app: "Counter-Strike 2", granted: 3600 },
+    { n: 4,  name: "",      st: "offline", left: 0,     app: "",               granted: 0 },
+    { n: 5,  name: "",      st: "active",  left: 2700,  app: "Steam",          granted: 5400 },
+    { n: 6,  name: "",      st: "idle",    left: 0,     app: "",               granted: 0 },
+    { n: 7,  name: "",      st: "paused",  left: 1800,  app: "Dota 2",         granted: 5400 },
+    { n: 8,  name: "",      st: "offline", left: 0,     app: "",               granted: 0 },
+    { n: 9,  name: "",      st: "idle",    left: 0,     app: "",               granted: 0 },
+    { n: 10, name: "",      st: "active",  left: 7833,  app: "Dota 2",         granted: 10800 },
+    { n: 11, name: "",      st: "idle",    left: 0,     app: "",               granted: 0 },
+    { n: 12, name: "",      st: "active",  left: 725,   app: "Google Chrome",  granted: 3600 },
+    { n: 13, name: "VIP-1", st: "idle",    left: 0,     app: "",               granted: 0 },
+    { n: 14, name: "VIP-2", st: "offline", left: 0,     app: "",               granted: 0 },
+    { n: 15, name: "",      st: "idle",    left: 0,     app: "",               granted: 0 }
+  ];
+
+  var LABEL = { offline: "Oflayn", idle: "Bo'sh", active: "Band", paused: "Pauza", warn: "Tugayapti" };
+
+  // ---- Yordamchi funksiyalar ----
+  function money(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+
+  function hms(s) {
+    s = Math.max(0, Math.floor(s));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m + ":" + (x < 10 ? "0" : "") + x;
+  }
+
+  function wordyTime(s) {
+    s = Math.max(0, Math.floor(s));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    if (h === 0 && m === 0) return s + " soniya";
+    if (h === 0) return m + " daqiqa";
+    if (m === 0) return h + " soat";
+    return h + " soat " + m + " daqiqa";
+  }
+
+  function endClock(sec) {
+    var d = new Date(Date.now() + sec * 1000);
+    return (d.getHours() < 10 ? "0" : "") + d.getHours() + ":" + (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
+  }
+
+  // 7-bo'lim: soniya = floor(summa * 3600 / narx);  summa = ceil(soniya * narx / 3600)
+  function amountToSeconds(a) { return Math.floor(a * 3600 / RATE); }
+  function secondsToAmount(s) { return Math.ceil(s * RATE / 3600); }
+
+  function visualState(pc) {
+    if (pc.st === "active" && pc.left <= WARN_SEC) return "warn";
+    return pc.st;
+  }
+
+  function colorOf(state) {
+    return { offline: "var(--st-off)", idle: "var(--st-idle)", active: "var(--st-busy)",
+             warn: "var(--st-warn)", paused: "var(--st-pause)" }[state];
+  }
+
+  // ---- Chizish ----
+  var grid = document.getElementById("grid");
+
+  function render() {
+    grid.innerHTML = "";
+    PCS.forEach(function (pc) {
+      var vs = visualState(pc);
+      var card = document.createElement("article");
+      card.className = "card" + (pc.st === "offline" ? " offline" : "");
+      card.style.setProperty("--c", colorOf(vs));
+
+      var head = '<div class="card-head">' +
+        '<span class="pcnum">PC-' + (pc.n < 10 ? "0" : "") + pc.n + '</span>' +
+        (pc.name ? '<span class="pcname">' + pc.name + '</span>' : "") +
+        '<span class="pill">' + LABEL[vs] + '</span></div>';
+
+      var body = '<div class="card-body">';
+      if (pc.st === "offline") {
+        body += '<div class="time muted">—</div><div class="meta">Kompyuter o\'chiq</div>';
+      } else if (pc.st === "idle") {
+        body += '<div class="time muted">00:00:00</div><div class="meta">Sessiya yo\'q</div>';
+      } else {
+        var pct = pc.granted ? Math.max(0, Math.min(100, pc.left / pc.granted * 100)) : 0;
+        body += '<div class="time" data-time="' + pc.n + '">' + hms(pc.left) + '</div>' +
+          '<div class="meta">' + (pc.st === "paused" ? "To\'xtatib turilgan" : "Ochiq:") +
+          (pc.app && pc.st !== "paused" ? ' <b>' + pc.app + '</b>' : "") + '</div>' +
+          '<div class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>';
+      }
+      body += "</div>";
+
+      var foot = '<div class="card-foot">';
+      if (pc.st === "offline") {
+        foot += '<button class="btn primary" data-act="wake" data-n="' + pc.n + '">Yoqish</button>';
+      } else if (pc.st === "idle") {
+        foot += '<button class="btn primary" data-act="start" data-n="' + pc.n + '">Sessiya boshlash</button>' +
+                '<button class="btn" data-act="launch" data-n="' + pc.n + '">Dastur</button>';
+      } else if (pc.st === "paused") {
+        foot += '<button class="btn primary" data-act="resume" data-n="' + pc.n + '">Davom ettirish</button>' +
+                '<button class="btn danger" data-act="stop" data-n="' + pc.n + '">To\'xtatish</button>';
+      } else {
+        foot += '<button class="btn primary" data-act="topup" data-n="' + pc.n + '">Vaqt qo\'shish</button>' +
+                '<button class="btn" data-act="pause" data-n="' + pc.n + '">Pauza</button>';
+      }
+      foot += '<button class="btn icon" data-act="more" data-n="' + pc.n + '" aria-label="Boshqa amallar">&#8942;</button></div>';
+
+      card.innerHTML = head + body + foot;
+      grid.appendChild(card);
+    });
+    renderStats();
+  }
+
+  function renderStats() {
+    var busy = PCS.filter(function (p) { return p.st === "active" || p.st === "paused"; }).length;
+    var idle = PCS.filter(function (p) { return p.st === "idle"; }).length;
+    var off = PCS.filter(function (p) { return p.st === "offline"; }).length;
+    document.getElementById("s-money").textContent = money(todayMoney);
+    document.getElementById("s-busy").innerHTML = busy + ' <small>/ ' + PCS.length + '</small>';
+    document.getElementById("s-idle").textContent = idle;
+    document.getElementById("s-off").textContent = off;
+    document.getElementById("s-rate").innerHTML = money(RATE) + ' <small>so\'m</small>';
+  }
+
+  // ---- Har soniyalik taymer ----
+  setInterval(function () {
+    var d = new Date();
+    document.getElementById("clock").textContent =
+      (d.getHours() < 10 ? "0" : "") + d.getHours() + ":" +
+      (d.getMinutes() < 10 ? "0" : "") + d.getMinutes() + ":" +
+      (d.getSeconds() < 10 ? "0" : "") + d.getSeconds();
+
+    var needRender = false;
+    PCS.forEach(function (pc) {
+      if (pc.st !== "active") return;
+      var before = visualState(pc);
+      pc.left = Math.max(0, pc.left - 1);
+      if (pc.left === 0) { pc.st = "idle"; pc.app = ""; needRender = true; return; }
+      if (visualState(pc) !== before) { needRender = true; return; }
+      var el = grid.querySelector('[data-time="' + pc.n + '"]');
+      if (el) {
+        el.textContent = hms(pc.left);
+        var bar = el.parentNode.querySelector(".bar i");
+        if (bar && pc.granted) bar.style.width = (pc.left / pc.granted * 100).toFixed(1) + "%";
+      }
+    });
+    if (needRender) render();
+  }, 1000);
+
+  // ---- Oyna (modal) ----
+  var overlay = document.getElementById("overlay");
+  function closeSheet() { overlay.innerHTML = ""; }
+  overlay.addEventListener("click", function (e) { if (e.target === overlay.firstChild) closeSheet(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeSheet(); });
+
+  function openSheet(html) {
+    overlay.innerHTML = '<div class="sheet"><div class="sheet-box" role="dialog" aria-modal="true">' + html + '</div></div>';
+    var first = overlay.querySelector("input, button");
+    if (first) first.focus();
+  }
+
+  function toast(msg) {
+    var host = document.getElementById("toast-host");
+    host.innerHTML = '<div class="toast">' + msg + "</div>";
+    setTimeout(function () { host.innerHTML = ""; }, 2600);
+  }
+
+  function pcLabel(pc) { return "PC-" + (pc.n < 10 ? "0" : "") + pc.n + (pc.name ? " (" + pc.name + ")" : ""); }
+  function byNum(n) { return PCS.filter(function (p) { return p.n === n; })[0]; }
+
+  // ---- Sessiya boshlash / vaqt qo'shish ----
+  function openSession(pc, mode) {
+    var title = mode === "start" ? "sessiya boshlash" : "vaqt qo'shish";
+    openSheet(
+      '<div class="sheet-head"><h2>' + pcLabel(pc) + ' — ' + title + '</h2>' +
+        '<span class="sub">' + money(RATE) + " so'm/soat</span></div>" +
+      '<div class="sheet-body">' +
+        '<div class="seg" id="seg">' +
+          '<button aria-pressed="true" data-m="amount">Summa</button>' +
+          '<button aria-pressed="false" data-m="time">Vaqt</button>' +
+        "</div>" +
+        '<label class="fld"><span id="fld-label">Summa (so\'m)</span>' +
+          '<input type="number" id="val" value="10000" min="0" step="1000" inputmode="numeric"></label>' +
+        '<div class="chips" id="chips"></div>' +
+        '<div class="result" id="res"></div>' +
+      "</div>" +
+      '<div class="sheet-foot">' +
+        '<button class="btn" data-close="1">Bekor qilish</button>' +
+        '<button class="btn primary" id="go">' + (mode === "start" ? "Boshlash" : "Qo'shish") + "</button>" +
+      "</div>"
+    );
+
+    var mode2 = "amount";
+    var input = document.getElementById("val");
+
+    function chipSet() {
+      var vals = mode2 === "amount" ? [5000, 10000, 20000, 50000] : [30, 60, 120, 180];
+      document.getElementById("chips").innerHTML = vals.map(function (v) {
+        return '<button class="btn" data-chip="' + v + '">' +
+          (mode2 === "amount" ? money(v) : v + " daq") + "</button>";
+      }).join("");
+    }
+
+    function update() {
+      var raw = parseInt(input.value, 10);
+      if (isNaN(raw) || raw < 0) raw = 0;
+      var sec = mode2 === "amount" ? amountToSeconds(raw) : raw * 60;
+      var amt = mode2 === "amount" ? raw : secondsToAmount(sec);
+      var total = (mode === "start" ? 0 : pc.left) + sec;
+      var over = total > MAX_HOURS * 3600;
+
+      document.getElementById("res").innerHTML =
+        '<div class="big">' + wordyTime(sec) + "</div>" +
+        '<div class="row"><span>' + (mode2 === "amount" ? "Summa" : "Hisoblangan summa") +
+          "</span><span>" + money(amt) + " so'm</span></div>" +
+        (mode === "topup"
+          ? '<div class="row"><span>Yangi qoldiq</span><span>' + wordyTime(total) + "</span></div>"
+          : "") +
+        '<div class="row"><span>Tugash vaqti</span><span>' + endClock(total) + "</span></div>" +
+        (over ? '<div class="row"><span class="warn">&#9888; ' + MAX_HOURS +
+          " soatdan oshdi — tasdiq so'raladi</span></div>" : "");
+      document.getElementById("go").disabled = sec <= 0;
+    }
+
+    chipSet(); update();
+    input.addEventListener("input", update);
+
+    document.getElementById("seg").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-m]"); if (!b) return;
+      mode2 = b.dataset.m;
+      Array.prototype.forEach.call(this.children, function (c) {
+        c.setAttribute("aria-pressed", String(c === b));
+      });
+      document.getElementById("fld-label").textContent = mode2 === "amount" ? "Summa (so'm)" : "Vaqt (daqiqa)";
+      input.value = mode2 === "amount" ? 10000 : 60;
+      input.step = mode2 === "amount" ? 1000 : 15;
+      chipSet(); update();
+    });
+
+    document.getElementById("chips").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-chip]"); if (!b) return;
+      input.value = b.dataset.chip; update();
+    });
+
+    document.getElementById("go").addEventListener("click", function () {
+      var raw = parseInt(input.value, 10) || 0;
+      var sec = mode2 === "amount" ? amountToSeconds(raw) : raw * 60;
+      var amt = mode2 === "amount" ? raw : secondsToAmount(sec);
+      if (mode === "start") { pc.st = "active"; pc.left = sec; pc.granted = sec; pc.app = ""; }
+      else { pc.left += sec; pc.granted += sec; }
+      todayMoney += amt;
+      closeSheet(); render();
+      toast(pcLabel(pc) + ": " + wordyTime(sec) + " qo'shildi (" + money(amt) + " so'm)");
+    });
+  }
+
+  // ---- To'xtatish tasdig'i ----
+  function openStop(pc) {
+    var used = pc.granted - pc.left;
+    openSheet(
+      '<div class="sheet-head"><h2>Sessiyani to\'xtatish</h2></div>' +
+      '<div class="sheet-body"><p class="confirm-text">' +
+        "<b>" + pcLabel(pc) + "</b> sessiyasini to'xtatasizmi?<br><br>" +
+        "Ishlatilgan vaqt: <b>" + wordyTime(used) + "</b><br>" +
+        "Qolgan vaqt: <b>" + wordyTime(pc.left) + "</b><br><br>" +
+        "Qolgan vaqt uchun pul qaytarilmaydi." +
+      "</p></div>" +
+      '<div class="sheet-foot"><button class="btn" data-close="1">Bekor qilish</button>' +
+      '<button class="btn primary" id="go">Ha, to\'xtatilsin</button></div>'
+    );
+    document.getElementById("go").addEventListener("click", function () {
+      pc.st = "idle"; pc.left = 0; pc.granted = 0; pc.app = "";
+      closeSheet(); render(); toast(pcLabel(pc) + ": sessiya to'xtatildi");
+    });
+  }
+
+  // ---- Qo'shimcha amallar ----
+  function openMore(pc) {
+    var items = [
+      ["msg", "Xabar yuborish"],
+      ["launch", "Dastur ochish"],
+      ["maint", "Windows'ga chiqarish (texnik rejim)"],
+      ["restart", "Qayta yuklash"],
+      ["off", "O'chirish"]
+    ];
+    if (pc.st === "active" || pc.st === "paused") items.splice(2, 0, ["stop", "Sessiyani to'xtatish"]);
+    openSheet(
+      '<div class="sheet-head"><h2>' + pcLabel(pc) + "</h2></div>" +
+      '<div class="menu-list">' + items.map(function (it) {
+        return '<button data-more="' + it[0] + '"' +
+          (it[0] === "off" || it[0] === "stop" ? ' class="danger"' : "") + ">" + it[1] + "</button>";
+      }).join("") + "</div>" +
+      '<div class="sheet-foot"><button class="btn" data-close="1">Yopish</button></div>'
+    );
+    overlay.addEventListener("click", function h(e) {
+      var b = e.target.closest("button[data-more]"); if (!b) return;
+      var a = b.dataset.more; closeSheet();
+      if (a === "stop") return openStop(pc);
+      if (a === "off") { pc.st = "offline"; pc.left = 0; pc.app = ""; render(); return toast(pcLabel(pc) + ": o'chirildi"); }
+      var txt = { msg: "xabar yuborildi", launch: "dastur ochildi", maint: "texnik rejimga o'tkazildi", restart: "qayta yuklanmoqda" }[a];
+      toast(pcLabel(pc) + ": " + txt);
+    }, { once: true });
+  }
+
+  // ---- Kartalardagi bosishlar ----
+  grid.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-act]"); if (!b) return;
+    var pc = byNum(parseInt(b.dataset.n, 10));
+    var a = b.dataset.act;
+    if (a === "start") openSession(pc, "start");
+    else if (a === "topup") openSession(pc, "topup");
+    else if (a === "stop") openStop(pc);
+    else if (a === "more") openMore(pc);
+    else if (a === "pause") { pc.st = "paused"; render(); toast(pcLabel(pc) + ": pauza"); }
+    else if (a === "resume") { pc.st = "active"; render(); toast(pcLabel(pc) + ": davom etmoqda"); }
+    else if (a === "wake") { pc.st = "idle"; render(); toast(pcLabel(pc) + ": yoqish signali yuborildi"); }
+    else if (a === "launch") toast(pcLabel(pc) + ": dastur tanlash oynasi (3-bosqich)");
+  });
+
+  overlay.addEventListener("click", function (e) {
+    if (e.target.closest("[data-close]")) closeSheet();
+  });
+
+  // ---- Yuqoridagi tugmalar ----
+  document.getElementById("wake-all").addEventListener("click", function () {
+    var n = 0;
+    PCS.forEach(function (p) { if (p.st === "offline") { p.st = "idle"; n++; } });
+    render(); toast(n ? n + " ta kompyuterga yoqish signali yuborildi" : "Hamma kompyuter allaqachon yoqilgan");
+  });
+
+  document.getElementById("shutdown-idle").addEventListener("click", function () {
+    var n = 0;
+    PCS.forEach(function (p) { if (p.st === "idle") { p.st = "offline"; n++; } });
+    render(); toast(n ? n + " ta bo'sh kompyuter o'chirildi" : "Bo'sh kompyuter yo'q");
+  });
+
+  // ---- Bo'limlar ----
+  var PH = {
+    apps: ["Dasturlar", "Dastur katalogi va kompyuter × dastur jadvali shu yerda bo'ladi."],
+    pcs: ["Kompyuterlar", "Kompyuter qo'shish, MAC manzil va “Yangi kompyuter topildi” ro'yxati."],
+    reports: ["Hisobotlar", "Sana oralig'i bo'yicha sessiyalar jadvali, jami tushum va CSV eksport."],
+    settings: ["Sozlamalar", "Soatlik narx, ogohlantirish vaqti, zaxira, client kaliti va amallar jurnali."]
+  };
+
+  document.getElementById("nav").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-tab]"); if (!b) return;
+    Array.prototype.forEach.call(this.children, function (c) { c.setAttribute("aria-current", String(c === b)); });
+    var t = b.dataset.tab;
+    document.getElementById("view-panel").hidden = t !== "panel";
+    document.getElementById("view-other").hidden = t === "panel";
+    if (t !== "panel") {
+      document.getElementById("ph-title").textContent = PH[t][0];
+      document.getElementById("ph-text").textContent = PH[t][1];
+    }
+  });
+
+  render();
+</script>
