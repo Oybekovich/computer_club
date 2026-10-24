@@ -821,6 +821,7 @@ Bu savollarga javob kelguncha qavs ichidagi vaqtinchalik qarorlar bilan ishlayve
 - **Bu sessiya Linux (bulutli konteyner) da ishlagan, Windows'da emas.** Shuning uchun kod shu yerda yozilib, `dotnet build` va `dotnet test` bilan tekshirildi, lekin **WinForms/WPF oynalarini ishga tushirib ko'rish imkoni bo'lmadi.** Haqiqiy ishga tushirish va ekranga qarash bilan bog'liq barcha sinovlar (12-bo'lim) sizning Windows kompyuteringizda bajariladi.
 - Shu sababli: Windows'ga bog'liq qismlarni (WebView2, Job Object, Registry, WOL, SSH, kiosk) har bir bosqichda siz o'zingiz sinab, natijani menga aytib turasiz.
 - `scripts/dev/` va `scripts/deploy/` papkalari hozircha bo'sh (git bo'sh papkalarni saqlamaydi) — ular 10-bosqichda to'ldiriladi.
+- **4-bosqich uchun:** admin oynasi tray'ga yashiringanda WebView2 chizishni to'xtatsin (`CoreWebView2Controller.IsVisible = false`) — kartalardagi ekran animatsiyalari yopiq oynada CPU yemasligi uchun. 3-bosqichda tekshiruv: 15 ta band kompyuterda `msedgewebview2` CPU ≤ 2–3%.
 
 ### Hujjatni qayta ko'rib chiqish (2026-10-23)
 
